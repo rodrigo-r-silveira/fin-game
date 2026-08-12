@@ -81,14 +81,17 @@ export default function DashboardPage() {
     tech?: { title: string; cost: number; points: number };
   }>({});
 
-  // Load group info from URL query parameter or localStorage
+  // Load group info from URL query parameter or localStorage (Robust Recovery)
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      const token = params.get("token");
+      const token = params.get("token") || localStorage.getItem("finGame_groupToken");
       const savedName = localStorage.getItem("finGame_groupName");
 
       if (token) {
+        // Save token to localStorage so user never loses access on refresh
+        localStorage.setItem("finGame_groupToken", token);
+
         fetch(`/api/groups`)
           .then((res) => res.json())
           .then((data) => {
@@ -105,6 +108,21 @@ export default function DashboardPage() {
                 if (matched.investments) setInvestedCapital(matched.investments);
                 if (matched.currentMonth !== undefined) setCurrentMonth(matched.currentMonth);
                 if (matched.happinessPoints) setHappinessPoints(matched.happinessPoints);
+
+                // Global Timer Sync using server timestamp
+                if (matched.monthStartedAt) {
+                  const elapsedSecs = Math.floor((Date.now() - new Date(matched.monthStartedAt).getTime()) / 1000);
+                  const remaining = Math.max(0, MONTH_DURATION_SECONDS - elapsedSecs);
+                  setTimeLeft(remaining);
+                }
+
+                // Recover local fixed expenses if saved
+                const savedExpenses = localStorage.getItem(`finGame_fixedExpenses_${token}`);
+                if (savedExpenses) {
+                  try {
+                    setFixedExpenses(JSON.parse(savedExpenses));
+                  } catch (_) {}
+                }
               }
             }
           })
@@ -162,6 +180,16 @@ export default function DashboardPage() {
       description: "Plano de internet rápida para estudos e conexão.",
     },
   ]);
+
+  // Persist fixedExpenses locally whenever changed
+  useEffect(() => {
+    if (typeof window !== "undefined" && fixedExpenses.length > 0) {
+      const token = localStorage.getItem("finGame_groupToken");
+      if (token) {
+        localStorage.setItem(`finGame_fixedExpenses_${token}`, JSON.stringify(fixedExpenses));
+      }
+    }
+  }, [fixedExpenses]);
 
   // Single-use temptations catalog
   const [temptations] = useState<ExpenseItem[]>([

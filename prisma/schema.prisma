@@ -23,6 +23,7 @@ model Group {
   investments      Float         @default(0.0) // Saldo aplicado em investimentos fictícios
   happinessPoints  Int           @default(0)
   currentMonth     Int           @default(0)   // 0 = Mês 0 (RPG), 1-6 = Meses de jogo
+  monthStartedAt   DateTime?                   // Timestamp do início do mês atual para sincronização global
   isStarted        Boolean       @default(false)
   isGameFinished   Boolean       @default(false)
   createdAt        DateTime      @default(now())

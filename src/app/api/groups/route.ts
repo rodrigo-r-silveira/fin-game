@@ -106,7 +106,7 @@ export async function PATCH(req: Request) {
         ...(typeof balance === "number" && { balance }),
         ...(typeof savings === "number" && { savings }),
         ...(typeof happinessPoints === "number" && { happinessPoints }),
-        ...(typeof currentMonth === "number" && { currentMonth }),
+        ...(typeof currentMonth === "number" && { currentMonth, monthStartedAt: new Date() }),
       },
     });
 

@@ -7,6 +7,7 @@ export async function POST() {
     await prisma.group.updateMany({
       data: {
         isStarted: true,
+        monthStartedAt: new Date(),
       },
     });
 
