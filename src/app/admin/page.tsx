@@ -16,6 +16,8 @@ import {
   Copy,
   Check,
   ExternalLink,
+  Trash2,
+  AlertOctagon,
 } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/utils/supabase/client";
@@ -35,15 +37,23 @@ export default function AdminPage() {
   const [gameStarted, setGameStarted] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
 
-  // Default network IP for mobile testing
-  const [hostIp, setHostIp] = useState("192.168.1.105:3000");
+  // Dynamic host URL (defaults to Vercel production domain, auto-detects browser origin)
+  const [baseUrl, setBaseUrl] = useState("https://fin-game-umber.vercel.app");
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  // Auto-detect browser domain on client mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setBaseUrl(window.location.origin);
+    }
+  }, []);
 
   // Full registration URL encoded in QR Code
-  const registerUrl = `http://${hostIp}/register-group`;
+  const registerUrl = `${baseUrl}/register-group`;
 
   // Fetch groups from API
   const fetchGroups = async () => {
@@ -57,6 +67,49 @@ export default function AdminPage() {
       console.error("Erro ao buscar grupos:", err);
     } finally {
       setLoadingGroups(false);
+    }
+  };
+
+  // Delete single group
+  const handleDeleteGroup = async (id: string, name: string) => {
+    if (!confirm(`Tem certeza que deseja excluir o grupo "${name}"?`)) return;
+
+    setDeletingId(id);
+    try {
+      const res = await fetch(`/api/groups?id=${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setGroups((prev) => prev.filter((g) => g.id !== id));
+        setLastAction(`🗑️ Grupo "${name}" excluído com sucesso.`);
+      } else {
+        alert(`Erro ao excluir: ${data.error}`);
+      }
+    } catch (err: any) {
+      alert(`Erro de conexão ao excluir grupo.`);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // Delete all groups (Reset Room)
+  const handleClearAllGroups = async () => {
+    if (!confirm("⚠️ ATENÇÃO: Deseja realmente excluir TODOS os grupos da sala? Esta ação é irreversível!")) {
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/groups?all=true", { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setGroups([]);
+        setGameStarted(false);
+        setCurrentMonth(1);
+        setLastAction("🧹 Todos os grupos foram removidos e a sala foi resetada.");
+      } else {
+        alert(`Erro ao limpar sala: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão ao limpar sala.");
     }
   };
 
@@ -182,12 +235,12 @@ export default function AdminPage() {
             <div className="absolute inset-0 rounded-2xl bg-emerald-500/5 pointer-events-none group-hover:bg-transparent transition-all" />
           </div>
 
-          {/* IP Host Address Configurator */}
+          {/* URL Configurator */}
           <div className="w-full space-y-3 pt-4 border-t border-white/10 text-xs">
             <div className="flex items-center justify-between text-slate-400">
               <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
                 <Wifi className="w-3.5 h-3.5" />
-                <span>URL de Cadastro (Wi-Fi Local):</span>
+                <span>URL de Cadastro:</span>
               </span>
               <button
                 onClick={copyRegistrationUrl}
@@ -201,9 +254,9 @@ export default function AdminPage() {
             <div className="flex items-center gap-2 bg-slate-900 p-2 rounded-xl border border-white/10">
               <input
                 type="text"
-                value={hostIp}
-                onChange={(e) => setHostIp(e.target.value)}
-                placeholder="192.168.1.105:3000"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://fin-game-umber.vercel.app"
                 className="bg-transparent text-white font-mono text-xs flex-1 focus:outline-none px-2"
               />
               <a
@@ -217,7 +270,7 @@ export default function AdminPage() {
               </a>
             </div>
             <p className="text-[11px] text-slate-500">
-              Certifique-se de que o celular e o computador estão na mesma rede Wi-Fi.
+              O QR Code se atualiza automaticamente com o domínio acima.
             </p>
           </div>
         </div>
@@ -311,15 +364,27 @@ export default function AdminPage() {
 
           {/* Real-time Connected Groups Monitor */}
           <div className="glass-panel p-6 rounded-3xl border border-white/10 space-y-4">
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Users className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-base font-bold text-white">Grupos Cadastrados em Tempo Real</h3>
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
                 <span className="text-xs font-bold px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
                   {groups.length} {groups.length === 1 ? "Grupo Conectado" : "Grupos Conectados"}
                 </span>
+
+                {groups.length > 0 && (
+                  <button
+                    onClick={handleClearAllGroups}
+                    className="px-2.5 py-1 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold text-xs transition-colors flex items-center gap-1"
+                    title="Excluir todos os grupos e resetar a sala"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Limpar Sala</span>
+                  </button>
+                )}
+
                 <button
                   onClick={fetchGroups}
                   className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
@@ -349,7 +414,7 @@ export default function AdminPage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4 text-xs">
+                  <div className="flex items-center gap-3 text-xs">
                     <div className="text-right">
                       <span className="text-slate-400 block text-[10px]">Saldo Mensal:</span>
                       <strong className="text-emerald-400 font-extrabold">
@@ -357,7 +422,7 @@ export default function AdminPage() {
                       </strong>
                     </div>
 
-                    <div className="text-right border-l border-white/10 pl-4">
+                    <div className="text-right border-l border-white/10 pl-3">
                       <span className="text-slate-400 block text-[10px]">Pontuação:</span>
                       <strong className="text-amber-300 font-extrabold">{group.happinessPoints} pts</strong>
                     </div>
@@ -366,11 +431,20 @@ export default function AdminPage() {
                       href={`/dashboard?token=${group.qrCodeToken}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[11px] flex items-center gap-1 border border-white/10"
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-[11px] flex items-center gap-1 border border-white/10"
                     >
-                      <span>Abrir Tela</span>
+                      <span>Tela</span>
                       <ExternalLink className="w-3 h-3" />
                     </a>
+
+                    <button
+                      onClick={() => handleDeleteGroup(group.id, group.name)}
+                      disabled={deletingId === group.id}
+                      className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-colors"
+                      title="Excluir este grupo"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               ))}

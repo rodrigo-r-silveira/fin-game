@@ -52,3 +52,35 @@ export async function POST(req: Request) {
     );
   }
 }
+
+// DELETE /api/groups - Delete single group by id or clear all groups
+export async function DELETE(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get("id");
+    const clearAll = searchParams.get("all") === "true";
+
+    if (clearAll) {
+      await prisma.group.deleteMany({});
+      return NextResponse.json({ success: true, message: "Todos os grupos foram excluídos." });
+    }
+
+    if (!id) {
+      return NextResponse.json(
+        { success: false, error: "ID do grupo não informado." },
+        { status: 400 }
+      );
+    }
+
+    await prisma.group.delete({
+      where: { id },
+    });
+
+    return NextResponse.json({ success: true, message: "Grupo excluído com sucesso." });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
