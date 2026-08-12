@@ -78,8 +78,12 @@ export default function AdminLoginPage() {
             </label>
             <input
               type="text"
-              placeholder="Ex: admin"
+              placeholder="Digite seu usuário"
               value={username}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="username"
               onChange={(e) => {
                 setUsername(e.target.value);
                 setErrorMsg("");
@@ -98,6 +102,7 @@ export default function AdminLoginPage() {
               type="password"
               placeholder="••••••••"
               value={password}
+              autoComplete="current-password"
               onChange={(e) => {
                 setPassword(e.target.value);
                 setErrorMsg("");
@@ -129,10 +134,6 @@ export default function AdminLoginPage() {
             )}
           </button>
         </form>
-
-        <div className="p-3 rounded-xl bg-slate-900/60 border border-white/5 text-[11px] text-slate-500 text-center">
-          Credencial Padrão: Usuário <strong className="text-slate-300">admin</strong> • Senha <strong className="text-slate-300">fingame2026</strong>
-        </div>
       </main>
     </div>
   );

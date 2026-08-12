@@ -1,15 +1,21 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "fingame2026";
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || "admin").trim();
+const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || "fingame2026").trim();
 
 // POST /api/admin/login
 export async function POST(req: Request) {
   try {
     const { username, password } = await req.json();
 
-    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+    const cleanUsername = typeof username === "string" ? username.trim() : "";
+    const cleanPassword = typeof password === "string" ? password.trim() : "";
+
+    if (
+      cleanUsername.toLowerCase() === ADMIN_USERNAME.toLowerCase() &&
+      cleanPassword === ADMIN_PASSWORD
+    ) {
       const cookieStore = await cookies();
       cookieStore.set("finGame_admin_authenticated", "true", {
         path: "/",
