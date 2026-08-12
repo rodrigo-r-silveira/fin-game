@@ -68,21 +68,33 @@ export default function AdminPage() {
     const interval = setInterval(fetchGroups, 3000);
 
     // Supabase Realtime channel subscription
-    const supabase = createClient();
-    const channel = supabase
-      .channel("realtime-groups")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "Group" },
-        (payload) => {
-          fetchGroups();
-        }
-      )
-      .subscribe();
+    let channel: any = null;
+    let supabase: any = null;
+    try {
+      supabase = createClient();
+      if (supabase) {
+        channel = supabase
+          .channel("realtime-groups")
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "Group" },
+            () => {
+              fetchGroups();
+            }
+          )
+          .subscribe();
+      }
+    } catch (err) {
+      console.warn("Supabase Realtime subscription error:", err);
+    }
 
     return () => {
       clearInterval(interval);
-      supabase.removeChannel(channel);
+      if (supabase && channel) {
+        try {
+          supabase.removeChannel(channel);
+        } catch (_) {}
+      }
     };
   }, []);
 
