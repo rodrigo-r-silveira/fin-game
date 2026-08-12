@@ -38,7 +38,8 @@ export default function RegisterGroupPage() {
       localStorage.setItem("finGame_groupToken", data.group.qrCodeToken);
       localStorage.setItem("finGame_groupName", data.group.name);
 
-      setCreatedGroup(data.group);
+      // Redirect to Waiting Room
+      router.push(`/waiting-room?token=${data.group.qrCodeToken}`);
     } catch (err: any) {
       setErrorMsg(err.message || "Erro de conexão ao cadastrar.");
     } finally {

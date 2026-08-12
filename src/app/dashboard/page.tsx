@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   Heart,
   Wallet,
@@ -56,6 +57,7 @@ const TOTAL_MONTHS = 6;
 const MONTHLY_ALLOWANCE = 2500.0; // Bolsa Auxílio inicial e a cada mês
 
 export default function DashboardPage() {
+  const router = useRouter();
   // Game state
   const [currentMonth, setCurrentMonth] = useState<number>(1);
   const [timeLeft, setTimeLeft] = useState<number>(MONTH_DURATION_SECONDS);
@@ -79,6 +81,11 @@ export default function DashboardPage() {
             if (data.success && Array.isArray(data.groups)) {
               const matched = data.groups.find((g: any) => g.qrCodeToken === token);
               if (matched) {
+                if (!matched.isStarted) {
+                  // Redirect to waiting room if game hasn't started yet
+                  router.push(`/waiting-room?token=${token}`);
+                  return;
+                }
                 setGroupName(matched.name);
                 setBalance(matched.balance);
                 setSavings(matched.savings);
@@ -91,7 +98,7 @@ export default function DashboardPage() {
         setGroupName(savedName);
       }
     }
-  }, []);
+  }, [router]);
   
   // Expenses state
   const [fixedExpenses, setFixedExpenses] = useState<ExpenseItem[]>([
@@ -502,18 +509,10 @@ export default function DashboardPage() {
 
           {/* Right: Quick Action & Allowance badge */}
           <div className="flex items-center gap-3">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
               <TrendingUp className="w-4 h-4" />
               <span>Bolsa: R$ {MONTHLY_ALLOWANCE.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/mês</span>
             </div>
-            <button
-              onClick={triggerUnforeseenEvent}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-white/10 text-slate-300 transition-colors flex items-center gap-1.5"
-              title="Testar disparo de Imprevisto"
-            >
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Simular Imprevisto</span>
-            </button>
           </div>
         </div>
       </header>

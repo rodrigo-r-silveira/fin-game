@@ -17,9 +17,10 @@ import {
   Check,
   ExternalLink,
   Trash2,
-  AlertOctagon,
+  LogOut,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
 
 interface GroupItem {
@@ -29,21 +30,40 @@ interface GroupItem {
   balance: number;
   savings: number;
   happinessPoints: number;
+  isStarted: boolean;
   createdAt: string;
 }
 
 export default function AdminPage() {
+  const router = useRouter();
   const [currentMonth, setCurrentMonth] = useState(1);
   const [gameStarted, setGameStarted] = useState(false);
   const [lastAction, setLastAction] = useState<string | null>(null);
 
-  // Dynamic host URL (defaults to Vercel production domain, auto-detects browser origin)
+  // Dynamic host URL
   const [baseUrl, setBaseUrl] = useState("https://fin-game-umber.vercel.app");
   const [groups, setGroups] = useState<GroupItem[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(true);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
+  // Check admin session authentication
+  useEffect(() => {
+    fetch("/api/admin/check")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.isAuthenticated) {
+          router.push("/admin/login");
+        } else {
+          setAuthChecked(true);
+        }
+      })
+      .catch(() => {
+        router.push("/admin/login");
+      });
+  }, [router]);
 
   // Auto-detect browser domain on client mount
   useEffect(() => {
@@ -62,11 +82,33 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success && Array.isArray(data.groups)) {
         setGroups(data.groups);
+        // Sync started state if any group is started
+        const hasStarted = data.groups.some((g: any) => g.isStarted);
+        if (hasStarted) {
+          setGameStarted(true);
+        }
       }
     } catch (err) {
       console.error("Erro ao buscar grupos:", err);
     } finally {
       setLoadingGroups(false);
+    }
+  };
+
+  // Start game for all groups
+  const handleStartGame = async () => {
+    try {
+      const res = await fetch("/api/groups/start", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setGameStarted(true);
+        fetchGroups();
+        setLastAction("🚀 Partida iniciada com sucesso! Todos os grupos na Sala de Espera foram liberados para o Mês 1.");
+      } else {
+        alert(`Erro ao iniciar partida: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão ao iniciar partida.");
     }
   };
 
@@ -113,8 +155,16 @@ export default function AdminPage() {
     }
   };
 
+  // Admin Logout
+  const handleLogout = async () => {
+    await fetch("/api/admin/login", { method: "DELETE" });
+    localStorage.removeItem("finGame_admin_logged");
+    router.push("/admin/login");
+  };
+
   // Poll groups & listen to Supabase Realtime changes
   useEffect(() => {
+    if (!authChecked) return;
     fetchGroups();
 
     // Polling interval every 3 seconds for instant updates
@@ -149,12 +199,7 @@ export default function AdminPage() {
         } catch (_) {}
       }
     };
-  }, []);
-
-  const handleStartGame = () => {
-    setGameStarted(true);
-    setLastAction("🚀 Partida iniciada com sucesso! Todos os grupos sincronizados no Mês 1.");
-  };
+  }, [authChecked]);
 
   const handleNextMonth = () => {
     if (currentMonth < 6) {
@@ -172,6 +217,17 @@ export default function AdminPage() {
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 3000);
   };
+
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-6 text-slate-100">
+        <div className="flex items-center gap-3 text-sm text-slate-400 font-semibold">
+          <span className="w-5 h-5 rounded-full border-2 border-purple-500 border-t-transparent animate-spin"></span>
+          <span>Verificando autenticação do admin...</span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen p-4 sm:p-6 text-slate-100 max-w-7xl mx-auto space-y-6">
@@ -197,6 +253,15 @@ export default function AdminPage() {
           >
             <QrCode className="w-4 h-4" />
             <span>Expandir QR Code de Cadastro</span>
+          </button>
+
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl glass-panel hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 text-xs font-bold transition-colors"
+            title="Encerrar sessão de admin"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sair</span>
           </button>
         </div>
       </div>
@@ -291,7 +356,7 @@ export default function AdminPage() {
                     : "bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse"
                 }`}
               >
-                {gameStarted ? `Em Andamento (Mês ${currentMonth})` : "Aguardando Cadastro dos Grupos"}
+                {gameStarted ? `Em Andamento (Mês ${currentMonth})` : "Aguardando Cadastro na Sala de Espera"}
               </span>
             </div>
 
@@ -318,7 +383,7 @@ export default function AdminPage() {
                 </div>
                 <div>
                   <div className="text-xs sm:text-sm font-extrabold">Dar Início à Atividade</div>
-                  <div className="text-[11px] opacity-80 font-normal">Sincroniza os grupos no Mês 1</div>
+                  <div className="text-[11px] opacity-80 font-normal">Libera participantes da Sala de Espera</div>
                 </div>
               </button>
 
@@ -407,7 +472,18 @@ export default function AdminPage() {
                       #{idx + 1}
                     </div>
                     <div>
-                      <h4 className="font-bold text-white text-sm">{group.name}</h4>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-bold text-white text-sm">{group.name}</h4>
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            group.isStarted
+                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                              : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                          }`}
+                        >
+                          {group.isStarted ? "Em Jogo" : "Na Espera"}
+                        </span>
+                      </div>
                       <span className="text-[11px] text-slate-400 font-mono">
                         Token: <strong className="text-emerald-300">{group.qrCodeToken}</strong>
                       </span>
