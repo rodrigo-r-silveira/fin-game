@@ -294,16 +294,75 @@ export default function DashboardPage() {
     }
   };
 
+  // Sync group metrics with backend API
+  const syncGroupMetrics = (newBalance: number, newSavings: number, newPoints: number, newMonth: number) => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token") || localStorage.getItem("finGame_groupToken");
+      if (token) {
+        fetch("/api/groups", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrCodeToken: token,
+            balance: newBalance,
+            savings: newSavings,
+            happinessPoints: newPoints,
+            currentMonth: newMonth,
+          }),
+        }).catch(() => {});
+      }
+    }
+  };
+
+  // Helper to handle payment using Balance first, then Savings if needed
+  const deductPayment = (cost: number) => {
+    const totalFunds = balance + savings;
+    if (totalFunds < cost) {
+      return { success: false, usedSavings: 0, newBalance: balance, newSavings: savings };
+    }
+
+    let newBalance = balance;
+    let newSavings = savings;
+    let usedSavings = 0;
+
+    if (balance >= cost) {
+      newBalance = balance - cost;
+    } else {
+      usedSavings = cost - balance;
+      newBalance = 0;
+      newSavings = savings - usedSavings;
+    }
+
+    return { success: true, usedSavings, newBalance, newSavings };
+  };
+
   // Turn of month logic
   const handleMonthEnd = () => {
-    // Check unpaid fixed expenses penalty (-50 points if any pending)
+    // Check unpaid fixed expenses
     const unpaidFixed = fixedExpenses.filter((e) => !e.isPaid);
     let penalty = 0;
+
+    // Carried over unpaid expenses with 8% interest added
+    const carriedOverExpenses: ExpenseItem[] = unpaidFixed.map((e, idx) => {
+      const alreadyOverdue = e.title.includes("⚠️ Atrasado");
+      const titleClean = alreadyOverdue ? e.title : `${e.title} ⚠️ (Atrasado +8% Juros)`;
+      const newCost = Math.round(e.cost * 1.08 * 100) / 100;
+      return {
+        ...e,
+        id: `overdue-${currentMonth}-${idx}-${Date.now()}`,
+        title: titleClean,
+        cost: newCost,
+        isPaid: false,
+        description: `Despesa acumulada não paga no mês anterior com 8% de juros inclusos.`,
+      };
+    });
+
     if (unpaidFixed.length > 0) {
       penalty = 50;
       setHappinessPoints((prev) => Math.max(0, prev - penalty));
       setNotification({
-        message: `Fim do Mês ${currentMonth}: Penalidade de -50 Pontos de Felicidade por despesas fixas não pagas!`,
+        message: `Fim do Mês ${currentMonth}: Penalidade -50 pts! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros e foram transferidas para o Mês ${currentMonth + 1}.`,
         type: "error",
       });
     } else {
@@ -314,17 +373,66 @@ export default function DashboardPage() {
     }
 
     // Auto-transfer remaining balance to savings
-    const remainingBalance = balance;
-    setSavings((prev) => prev + Math.max(0, remainingBalance));
+    const remainingBalance = Math.max(0, balance);
+    const newSavings = savings + remainingBalance;
+    const newBalance = MONTHLY_ALLOWANCE;
+
+    setSavings(newSavings);
 
     if (currentMonth < TOTAL_MONTHS) {
-      setCurrentMonth((prev) => prev + 1);
-      // Reset month balance with new allowance
-      setBalance(MONTHLY_ALLOWANCE);
-      // Reset fixed expenses paid status for new month
-      setFixedExpenses((prev) => prev.map((exp) => ({ ...exp, isPaid: false })));
-      // Reset active unforeseen
+      const nextMonth = currentMonth + 1;
+      setCurrentMonth(nextMonth);
+      setBalance(newBalance);
+
+      // Default base fixed expenses for the new month
+      const baseNewMonthExpenses: ExpenseItem[] = [
+        {
+          id: `f1-m${nextMonth}`,
+          title: "Aluguel & Condomínio",
+          cost: 1100.0,
+          happinessPoints: 10,
+          type: "FIXED",
+          category: "Moradia",
+          isPaid: false,
+          description: "Despesa fixa obrigatória de moradia para o mês.",
+        },
+        {
+          id: `f2-m${nextMonth}`,
+          title: "Supermercado & Alimentação",
+          cost: 650.0,
+          happinessPoints: 15,
+          type: "FIXED",
+          category: "Alimentação",
+          isPaid: false,
+          description: "Compras essenciais para refeições diárias.",
+        },
+        {
+          id: `f3-m${nextMonth}`,
+          title: "Contas de Luz, Água & Gás",
+          cost: 250.0,
+          happinessPoints: 5,
+          type: "FIXED",
+          category: "Utilidades",
+          isPaid: false,
+          description: "Serviços essenciais de utilidade pública.",
+        },
+        {
+          id: `f4-m${nextMonth}`,
+          title: "Internet Fibra + Celular",
+          cost: 150.0,
+          happinessPoints: 10,
+          type: "FIXED",
+          category: "Tecnologia",
+          isPaid: false,
+          description: "Plano de internet rápida para estudos e lazer.",
+        },
+      ];
+
+      // Combine: carried over unpaid items (with 8% juros) + new month base expenses
+      setFixedExpenses([...carriedOverExpenses, ...baseNewMonthExpenses]);
       setActiveUnforeseen(null);
+
+      syncGroupMetrics(newBalance, newSavings, Math.max(0, happinessPoints - penalty), nextMonth);
     } else {
       setNotification({
         message: "🎉 PARABÉNS! Você chegou ao Mês Final! Use a sua Poupança para comprar as Metas de Longo Prazo!",
@@ -338,39 +446,59 @@ export default function DashboardPage() {
     const expense = fixedExpenses.find((e) => e.id === id);
     if (!expense || expense.isPaid) return;
 
-    if (balance < expense.cost) {
+    const payment = deductPayment(expense.cost);
+    if (!payment.success) {
       setNotification({
-        message: "Saldo mensal insuficiente para pagar esta despesa fixa!",
+        message: "Saldo total (Mensal + Poupança) insuficiente para pagar esta despesa fixa!",
         type: "warning",
       });
       return;
     }
 
-    setBalance((prev) => prev - expense.cost);
-    setHappinessPoints((prev) => prev + expense.happinessPoints);
+    const newPoints = happinessPoints + expense.happinessPoints;
+    setBalance(payment.newBalance);
+    setSavings(payment.newSavings);
+    setHappinessPoints(newPoints);
     setFixedExpenses((prev) =>
       prev.map((e) => (e.id === id ? { ...e, isPaid: true } : e))
     );
+
+    syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
+
+    const savingsMsg = payment.usedSavings > 0
+      ? ` (R$ ${payment.usedSavings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} retirados da Poupança)`
+      : "";
+
     setNotification({
-      message: `Despesa "${expense.title}" paga com sucesso (+${expense.happinessPoints} Felicidade)!`,
+      message: `Despesa "${expense.title}" paga com sucesso (+${expense.happinessPoints} Felicidade)!${savingsMsg}`,
       type: "success",
     });
   };
 
   // Action: Buy Temptation
   const handleBuyTemptation = (item: ExpenseItem) => {
-    if (balance < item.cost) {
+    const payment = deductPayment(item.cost);
+    if (!payment.success) {
       setNotification({
-        message: "Saldo insuficiente no mês para comprar esta tentação!",
+        message: "Saldo total (Mensal + Poupança) insuficiente para comprar esta tentação!",
         type: "warning",
       });
       return;
     }
 
-    setBalance((prev) => prev - item.cost);
-    setHappinessPoints((prev) => prev + item.happinessPoints);
+    const newPoints = happinessPoints + item.happinessPoints;
+    setBalance(payment.newBalance);
+    setSavings(payment.newSavings);
+    setHappinessPoints(newPoints);
+
+    syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
+
+    const savingsMsg = payment.usedSavings > 0
+      ? ` (R$ ${payment.usedSavings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} retirados da Poupança)`
+      : "";
+
     setNotification({
-      message: `Comprou "${item.title}"! +${item.happinessPoints} Pontos de Felicidade!`,
+      message: `Comprou "${item.title}"! +${item.happinessPoints} Pontos de Felicidade!${savingsMsg}`,
       type: "success",
     });
   };
@@ -380,23 +508,36 @@ export default function DashboardPage() {
     if (!activeUnforeseen) return;
 
     if (pay) {
-      if (balance < activeUnforeseen.costToFix) {
+      const payment = deductPayment(activeUnforeseen.costToFix);
+      if (!payment.success) {
         setNotification({
-          message: "Saldo insuficiente para pagar o imprevisto!",
+          message: "Saldo total (Mensal + Poupança) insuficiente para resolver o imprevisto!",
           type: "warning",
         });
         return;
       }
-      setBalance((prev) => prev - activeUnforeseen.costToFix);
-      setHappinessPoints((prev) => prev + activeUnforeseen.restoredPointsIfFixed);
+
+      const newPoints = happinessPoints + activeUnforeseen.restoredPointsIfFixed;
+      setBalance(payment.newBalance);
+      setSavings(payment.newSavings);
+      setHappinessPoints(newPoints);
+
+      syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
+
+      const savingsMsg = payment.usedSavings > 0
+        ? ` (R$ ${payment.usedSavings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} retirados da Poupança)`
+        : "";
+
       setNotification({
-        message: `Imprevisto resolvido! -$${activeUnforeseen.costToFix.toFixed(2)} | +${activeUnforeseen.restoredPointsIfFixed} Felicidade!`,
+        message: `Imprevisto resolvido! -$${activeUnforeseen.costToFix.toFixed(2)} | +${activeUnforeseen.restoredPointsIfFixed} Felicidade!${savingsMsg}`,
         type: "success",
       });
     } else {
-      setHappinessPoints((prev) =>
-        Math.max(0, prev - activeUnforeseen.penaltyIfNotFixedPoints)
-      );
+      const newPoints = Math.max(0, happinessPoints - activeUnforeseen.penaltyIfNotFixedPoints);
+      setHappinessPoints(newPoints);
+
+      syncGroupMetrics(balance, savings, newPoints, currentMonth);
+
       setNotification({
         message: `Imprevisto ignorado! Penalidade de -${activeUnforeseen.penaltyIfNotFixedPoints} Pontos de Felicidade!`,
         type: "error",
@@ -405,6 +546,46 @@ export default function DashboardPage() {
 
     setResolvedUnforeseens((prev) => [...prev, activeUnforeseen.id]);
     setActiveUnforeseen(null);
+  };
+
+  // Action: Deposit to Savings manually
+  const handleDepositToSavings = (amount: number) => {
+    if (balance < amount) {
+      setNotification({
+        message: "Saldo mensal insuficiente para guardar esse valor!",
+        type: "warning",
+      });
+      return;
+    }
+    const newBalance = balance - amount;
+    const newSavings = savings + amount;
+    setBalance(newBalance);
+    setSavings(newSavings);
+    syncGroupMetrics(newBalance, newSavings, happinessPoints, currentMonth);
+    setNotification({
+      message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} guardados na Poupança com sucesso!`,
+      type: "success",
+    });
+  };
+
+  // Action: Withdraw from Savings manually
+  const handleWithdrawFromSavings = (amount: number) => {
+    if (savings < amount) {
+      setNotification({
+        message: "Poupança insuficiente para resgatar esse valor!",
+        type: "warning",
+      });
+      return;
+    }
+    const newSavings = savings - amount;
+    const newBalance = balance + amount;
+    setSavings(newSavings);
+    setBalance(newBalance);
+    syncGroupMetrics(newBalance, newSavings, happinessPoints, currentMonth);
+    setNotification({
+      message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados da Poupança para o Saldo Mensal!`,
+      type: "success",
+    });
   };
 
   // Action: Buy Long-Term Goal (only in final month using savings)
@@ -417,9 +598,13 @@ export default function DashboardPage() {
       return;
     }
 
-    setSavings((prev) => prev - goal.cost);
-    setHappinessPoints((prev) => prev + goal.happinessPoints);
+    const newSavings = savings - goal.cost;
+    const newPoints = happinessPoints + goal.happinessPoints;
+    setSavings(newSavings);
+    setHappinessPoints(newPoints);
     setLongTermGoals((prev) => prev.filter((g) => g.id !== goal.id));
+    syncGroupMetrics(balance, newSavings, newPoints, currentMonth);
+
     setNotification({
       message: `🏆 META ALCANÇADA: ${goal.title}! Bônus MASSIVO de +${goal.happinessPoints} Pontos de Felicidade!`,
       type: "success",
@@ -533,9 +718,9 @@ export default function DashboardPage() {
               R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5">
-              <span>Despesas Fixas Pendentes:</span>
-              <span className={`font-bold ${unpaidTotalCost > 0 ? "text-rose-400" : "text-emerald-400"}`}>
-                R$ {unpaidTotalCost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              <span>Capital Total Disponível:</span>
+              <span className="font-bold text-emerald-300">
+                R$ {(balance + savings).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </span>
             </div>
           </div>
@@ -552,9 +737,23 @@ export default function DashboardPage() {
             <div className="text-3xl font-extrabold text-purple-300 tracking-tight">
               R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5">
-              <span>Uso no Mês Final:</span>
-              <span className="font-semibold text-purple-400">Comprar Metas de Longo Prazo</span>
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5 gap-2">
+              <button
+                onClick={() => handleDepositToSavings(Math.min(balance, 500))}
+                disabled={balance <= 0}
+                className="px-2.5 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-200 font-semibold text-[11px] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                title="Transferir até R$500 do saldo para a poupança"
+              >
+                + Guardar Saldo
+              </button>
+              <button
+                onClick={() => handleWithdrawFromSavings(Math.min(savings, 500))}
+                disabled={savings <= 0}
+                className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-200 font-semibold text-[11px] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+                title="Resgatar até R$500 da poupança para o saldo"
+              >
+                - Resgatar R$500
+              </button>
             </div>
           </div>
 
@@ -660,7 +859,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-white">Despesas Fixas do Mês</h2>
-                    <p className="text-xs text-slate-400">Obrigatórias para evitar penalidade (-50 pts)</p>
+                    <p className="text-xs text-slate-400">Obrigatórias para evitar penalidade (-50 pts e +8% juros)</p>
                   </div>
                 </div>
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-white/10">
@@ -670,63 +869,73 @@ export default function DashboardPage() {
 
               {/* List of Fixed Expenses */}
               <div className="space-y-3">
-                {fixedExpenses.map((expense) => (
-                  <div
-                    key={expense.id}
-                    className={`p-4 rounded-xl border transition-all ${
-                      expense.isPaid
-                        ? "bg-slate-900/40 border-emerald-500/30 text-slate-400"
-                        : "bg-slate-900/80 border-white/10 hover:border-white/20 text-white"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className={`text-sm font-bold ${expense.isPaid ? "line-through text-slate-400" : "text-white"}`}>
-                            {expense.title}
-                          </h3>
-                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-                            {expense.category}
+                {fixedExpenses.map((expense) => {
+                  const totalFunds = balance + savings;
+                  const canPay = totalFunds >= expense.cost;
+                  const usesSavings = balance < expense.cost && canPay;
+
+                  return (
+                    <div
+                      key={expense.id}
+                      className={`p-4 rounded-xl border transition-all ${
+                        expense.isPaid
+                          ? "bg-slate-900/40 border-emerald-500/30 text-slate-400"
+                          : expense.title.includes("⚠️ Atrasado")
+                          ? "bg-rose-950/40 border-rose-500/40 text-white"
+                          : "bg-slate-900/80 border-white/10 hover:border-white/20 text-white"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className={`text-sm font-bold ${expense.isPaid ? "line-through text-slate-400" : "text-white"}`}>
+                              {expense.title}
+                            </h3>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-slate-800 text-slate-400">
+                              {expense.category}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">{expense.description}</p>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="text-sm font-extrabold text-emerald-400">
+                            R$ {expense.cost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                          </div>
+                          <span className="text-[11px] text-amber-400 font-semibold flex items-center justify-end gap-1 mt-0.5">
+                            +{expense.happinessPoints} pts
                           </span>
                         </div>
-                        <p className="text-xs text-slate-400 mt-1">{expense.description}</p>
                       </div>
 
-                      <div className="text-right shrink-0">
-                        <div className="text-sm font-extrabold text-emerald-400">
-                          R$ {expense.cost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                        </div>
-                        <span className="text-[11px] text-amber-400 font-semibold flex items-center justify-end gap-1 mt-0.5">
-                          +{expense.happinessPoints} pts
+                      <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
+                        <span className="text-xs text-slate-500">
+                          Status: {expense.isPaid ? "✅ Pago" : expense.title.includes("⚠️ Atrasado") ? "⚠️ Atrasado (+8% Juros)" : "⏳ Pendente"}
                         </span>
+                        {!expense.isPaid ? (
+                          <button
+                            onClick={() => handlePayFixedExpense(expense.id)}
+                            disabled={!canPay}
+                            className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                              canPay
+                                ? usesSavings
+                                  ? "bg-purple-600 hover:bg-purple-500 text-white shadow-md glow-purple"
+                                  : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md glow-emerald"
+                                : "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
+                            }`}
+                          >
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span>{usesSavings ? "Pagar c/ Poupança" : "Pagar Despesa"}</span>
+                          </button>
+                        ) : (
+                          <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-4 h-4" /> Pago
+                          </span>
+                        )}
                       </div>
                     </div>
-
-                    <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
-                      <span className="text-xs text-slate-500">
-                        Status: {expense.isPaid ? "✅ Pago neste mês" : "⏳ Pendente"}
-                      </span>
-                      {!expense.isPaid ? (
-                        <button
-                          onClick={() => handlePayFixedExpense(expense.id)}
-                          disabled={balance < expense.cost}
-                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            balance >= expense.cost
-                              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-md glow-emerald"
-                              : "bg-slate-800 text-slate-500 cursor-not-allowed"
-                          }`}
-                        >
-                          <DollarSign className="w-3.5 h-3.5" />
-                          <span>Pagar Despesa</span>
-                        </button>
-                      ) : (
-                        <span className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                          <CheckCircle2 className="w-4 h-4" /> Pago
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -751,45 +960,53 @@ export default function DashboardPage() {
 
               {/* Grid of Temptation Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {temptations.map((item) => (
-                  <div
-                    key={item.id}
-                    className="glass-panel-interactive p-4 rounded-xl border border-white/10 flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5">
-                          {item.category}
-                        </span>
-                        <div className="flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
-                          <Heart className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                          <span>+{item.happinessPoints} pts</span>
+                {temptations.map((item) => {
+                  const totalFunds = balance + savings;
+                  const canPay = totalFunds >= item.cost;
+                  const usesSavings = balance < item.cost && canPay;
+
+                  return (
+                    <div
+                      key={item.id}
+                      className="glass-panel-interactive p-4 rounded-xl border border-white/10 flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5">
+                            {item.category}
+                          </span>
+                          <div className="flex items-center gap-1 text-xs font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                            <Heart className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span>+{item.happinessPoints} pts</span>
+                          </div>
                         </div>
+
+                        <h3 className="font-bold text-white text-sm mb-1">{item.title}</h3>
+                        <p className="text-xs text-slate-400 mb-3">{item.description}</p>
                       </div>
 
-                      <h3 className="font-bold text-white text-sm mb-1">{item.title}</h3>
-                      <p className="text-xs text-slate-400 mb-3">{item.description}</p>
+                      <div className="pt-3 border-t border-white/5 flex items-center justify-between mt-2">
+                        <span className="text-sm font-extrabold text-emerald-400">
+                          R$ {item.cost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                        <button
+                          onClick={() => handleBuyTemptation(item)}
+                          disabled={!canPay}
+                          className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                            canPay
+                              ? usesSavings
+                                ? "bg-purple-600 hover:bg-purple-500 text-white shadow-md glow-purple"
+                                : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-md glow-amber"
+                              : "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
+                          }`}
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>{usesSavings ? "Comprar c/ Poupança" : "Comprar"}</span>
+                        </button>
+                      </div>
                     </div>
-
-                    <div className="pt-3 border-t border-white/5 flex items-center justify-between mt-2">
-                      <span className="text-sm font-extrabold text-emerald-400">
-                        R$ {item.cost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                      </span>
-                      <button
-                        onClick={() => handleBuyTemptation(item)}
-                        disabled={balance < item.cost}
-                        className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                          balance >= item.cost
-                            ? "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-md glow-amber"
-                            : "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
-                        }`}
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>Comprar</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -833,18 +1050,32 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3">
-              <button
-                onClick={() => handleResolveUnforeseen(true)}
-                disabled={balance < activeUnforeseen.costToFix}
-                className={`flex-1 py-3 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 ${
-                  balance >= activeUnforeseen.costToFix
-                    ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg glow-emerald"
-                    : "bg-slate-800 text-slate-500 cursor-not-allowed"
-                }`}
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Pagar e Resolver (R$ {activeUnforeseen.costToFix.toFixed(0)})</span>
-              </button>
+              {(() => {
+                const totalFunds = balance + savings;
+                const canPay = totalFunds >= activeUnforeseen.costToFix;
+                const usesSavings = balance < activeUnforeseen.costToFix && canPay;
+
+                return (
+                  <button
+                    onClick={() => handleResolveUnforeseen(true)}
+                    disabled={!canPay}
+                    className={`flex-1 py-3 px-4 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-2 ${
+                      canPay
+                        ? usesSavings
+                          ? "bg-purple-600 hover:bg-purple-500 text-white shadow-lg glow-purple"
+                          : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg glow-emerald"
+                        : "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>
+                      {usesSavings
+                        ? `Pagar c/ Poupança (R$ ${activeUnforeseen.costToFix.toFixed(0)})`
+                        : `Pagar e Resolver (R$ ${activeUnforeseen.costToFix.toFixed(0)})`}
+                    </span>
+                  </button>
+                );
+              })()}
 
               <button
                 onClick={() => handleResolveUnforeseen(false)}

@@ -84,3 +84,38 @@ export async function DELETE(req: Request) {
     );
   }
 }
+
+// PATCH /api/groups - Update group balance, savings, happinessPoints, currentMonth
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json();
+    const { id, qrCodeToken, balance, savings, happinessPoints, currentMonth } = body;
+
+    if (!id && !qrCodeToken) {
+      return NextResponse.json(
+        { success: false, error: "ID ou Token do grupo não informado." },
+        { status: 400 }
+      );
+    }
+
+    const whereClause = id ? { id } : { qrCodeToken };
+
+    const updated = await prisma.group.update({
+      where: whereClause,
+      data: {
+        ...(typeof balance === "number" && { balance }),
+        ...(typeof savings === "number" && { savings }),
+        ...(typeof happinessPoints === "number" && { happinessPoints }),
+        ...(typeof currentMonth === "number" && { currentMonth }),
+      },
+    });
+
+    return NextResponse.json({ success: true, group: updated });
+  } catch (error: any) {
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
