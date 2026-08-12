@@ -69,6 +69,9 @@ export default function DashboardPage() {
   // Single-use temptations tracking
   const [boughtTemptationIds, setBoughtTemptationIds] = useState<string[]>([]);
 
+  // Chosen base fixed expenses from Month 0 RPG character creation
+  const [chosenBaseExpenses, setChosenBaseExpenses] = useState<ExpenseItem[]>([]);
+
   // Imprevisto random trigger time (between 120s and 180s remaining) & modal countdown (30s)
   const [unforeseenTriggerTime, setUnforeseenTriggerTime] = useState<number>(150);
   const [modalCountdown, setModalCountdown] = useState<number | null>(null);
@@ -80,6 +83,21 @@ export default function DashboardPage() {
     transport?: { title: string; cost: number; points: number };
     tech?: { title: string; cost: number; points: number };
   }>({});
+
+  // Dynamic Catalog Options loaded from Admin Catalog API (/api/catalog)
+  const [catalogItems, setCatalogItems] = useState<any[]>([]);
+
+  // Load Catalog Items from /api/catalog
+  useEffect(() => {
+    fetch("/api/catalog")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.expenses)) {
+          setCatalogItems(data.expenses);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Load group info from URL query parameter or localStorage (Robust Recovery)
   useEffect(() => {
@@ -121,6 +139,14 @@ export default function DashboardPage() {
                 if (savedExpenses) {
                   try {
                     setFixedExpenses(JSON.parse(savedExpenses));
+                  } catch (_) {}
+                }
+
+                // Recover chosen RPG base expenses if saved
+                const savedChosen = localStorage.getItem(`finGame_chosenBase_${token}`);
+                if (savedChosen) {
+                  try {
+                    setChosenBaseExpenses(JSON.parse(savedChosen));
                   } catch (_) {}
                 }
               }
@@ -483,15 +509,21 @@ export default function DashboardPage() {
       rpgChoices.tech.points;
 
     setFixedExpenses(initialFixedExpenses);
+    setChosenBaseExpenses(initialFixedExpenses);
     setHappinessPoints(totalRPGPoints);
     setCurrentMonth(1);
     setBalance(MONTHLY_ALLOWANCE);
     setTimeLeft(MONTH_DURATION_SECONDS);
 
+    const token = localStorage.getItem("finGame_groupToken");
+    if (token) {
+      localStorage.setItem(`finGame_chosenBase_${token}`, JSON.stringify(initialFixedExpenses));
+    }
+
     syncGroupMetrics(MONTHLY_ALLOWANCE, savings, totalRPGPoints, 1);
 
     setNotification({
-      message: "🎭 Personagem montado com sucesso! Mês 1 iniciado. Gerencie seu orçamento com sabedoria!",
+      message: "🎭 Personagem montado com sucesso! Mês 1 iniciado com suas despesas personalizadas. Gerencie seu orçamento com sabedoria!",
       type: "success",
     });
   };
@@ -557,15 +589,17 @@ export default function DashboardPage() {
       setCurrentMonth(nextMonth);
       setBalance(newBalance);
 
-      // Default base expenses for new month (re-uses current character profile)
-      const baseNewMonthExpenses: ExpenseItem[] = fixedExpenses
-        .filter((e) => !e.title.includes("⚠️ Atrasado"))
-        .map((e, idx) => ({
-          ...e,
-          id: `f${idx + 1}-m${nextMonth}`,
-          isPaid: false,
-          consecutiveMonths: 1,
-        }));
+      // Re-use the exact 4 expenses chosen by the player in Month 0 RPG character creation
+      const sourceBase = chosenBaseExpenses.length > 0 
+        ? chosenBaseExpenses 
+        : fixedExpenses.filter((e) => !e.title.includes("⚠️ Atrasado"));
+
+      const baseNewMonthExpenses: ExpenseItem[] = sourceBase.map((e, idx) => ({
+        ...e,
+        id: `f${idx + 1}-m${nextMonth}`,
+        isPaid: false,
+        consecutiveMonths: 1,
+      }));
 
       setFixedExpenses([...carriedOverExpenses, ...baseNewMonthExpenses]);
       setActiveUnforeseen(null);
