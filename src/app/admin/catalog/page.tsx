@@ -16,6 +16,9 @@ import {
   Zap,
   HelpCircle,
   AlertTriangle,
+  Search,
+  Filter,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -47,6 +50,10 @@ export default function AdminCatalogPage() {
   const [authChecked, setAuthChecked] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"RPG" | "FIXED" | "TEMPTATION" | "UNFORESEEN">("RPG");
+
+  // Search & Category Filter state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("ALL");
 
   // Form state for creating/editing ExpenseOption
   const [formTitle, setFormTitle] = useState("");
@@ -127,7 +134,7 @@ export default function AdminCatalogPage() {
     }
   }, [authChecked]);
 
-  // Save new or updated item (Supports both ExpenseOption and UnforeseenEvent)
+  // Save new or updated item
   const handleSaveItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim()) return;
@@ -248,10 +255,34 @@ export default function AdminCatalogPage() {
     );
   }
 
+  // Filtered ExpenseOptions
   const filteredItems = items.filter((item) => {
-    if (activeTab === "RPG") return item.isRPGChoice;
-    if (activeTab === "FIXED") return item.type === "FIXED" && !item.isRPGChoice;
-    return item.type === "TEMPTATION";
+    if (activeTab === "RPG" && !item.isRPGChoice) return false;
+    if (activeTab === "FIXED" && (item.type !== "FIXED" || item.isRPGChoice)) return false;
+    if (activeTab === "TEMPTATION" && item.type !== "TEMPTATION") return false;
+
+    if (selectedCategory !== "ALL" && item.category !== selectedCategory) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const titleMatch = item.title.toLowerCase().includes(q);
+      const descMatch = (item.description || "").toLowerCase().includes(q);
+      const catMatch = (item.category || "").toLowerCase().includes(q);
+      if (!titleMatch && !descMatch && !catMatch) return false;
+    }
+
+    return true;
+  });
+
+  // Filtered UnforeseenEvents
+  const filteredUnforeseen = unforeseenItems.filter((item) => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const titleMatch = item.title.toLowerCase().includes(q);
+      const descMatch = (item.description || "").toLowerCase().includes(q);
+      if (!titleMatch && !descMatch) return false;
+    }
+    return true;
   });
 
   return (
@@ -471,7 +502,7 @@ export default function AdminCatalogPage() {
           </form>
         </div>
 
-        {/* Right Column: Filter Tabs & Catalog Items List */}
+        {/* Right Column: Search, Filter Tabs & Catalog Items List */}
         <div className="lg:col-span-7 space-y-4">
           {/* Tabs Bar */}
           <div className="glass-panel p-2 rounded-2xl border border-white/10 flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
@@ -542,20 +573,90 @@ export default function AdminCatalogPage() {
             </button>
           </div>
 
+          {/* Search & Category Filter Controls Bar */}
+          <div className="glass-panel p-3 rounded-2xl border border-white/10 flex flex-col sm:flex-row items-center gap-3">
+            {/* Search Input */}
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Pesquisar por título, categoria ou descrição..."
+                className="w-full pl-9 pr-8 py-2 rounded-xl bg-slate-900/80 border border-white/15 text-white text-xs focus:outline-none focus:border-purple-500 font-medium"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Category Filter Select (Hidden on Unforeseen tab) */}
+            {activeTab !== "UNFORESEEN" && (
+              <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                <Filter className="w-4 h-4 text-purple-400 hidden sm:block" />
+                <select
+                  value={selectedCategory}
+                  onChange={(e) => setSelectedCategory(e.target.value)}
+                  className="w-full sm:w-auto px-3 py-2 rounded-xl bg-slate-900/80 border border-white/15 text-white text-xs focus:outline-none focus:border-purple-500 font-medium"
+                >
+                  <option value="ALL">Todas as Categorias</option>
+                  <option value="Moradia">Moradia</option>
+                  <option value="Alimentação">Alimentação</option>
+                  <option value="Transporte">Transporte</option>
+                  <option value="Tecnologia">Tecnologia & Conectividade</option>
+                  <option value="Lazer">Lazer</option>
+                  <option value="Gastronomia">Gastronomia</option>
+                  <option value="Gadgets">Gadgets</option>
+                  <option value="Viagem">Viagem</option>
+                  <option value="Entretenimento">Entretenimento</option>
+                </select>
+              </div>
+            )}
+          </div>
+
+          {/* Item Counter Summary Bar */}
+          <div className="flex items-center justify-between text-xs text-slate-400 px-2 font-medium">
+            <span>
+              Exibindo{" "}
+              <strong className="text-purple-300 font-bold">
+                {activeTab === "UNFORESEEN" ? filteredUnforeseen.length : filteredItems.length}
+              </strong>{" "}
+              item(ns) nesta categoria
+            </span>
+            {(searchQuery || selectedCategory !== "ALL") && (
+              <button
+                onClick={() => {
+                  setSearchQuery("");
+                  setSelectedCategory("ALL");
+                }}
+                className="text-purple-400 hover:underline flex items-center gap-1 font-semibold"
+              >
+                <X className="w-3 h-3" /> Limpar Filtros
+              </button>
+            )}
+          </div>
+
           {/* Items List View */}
-          <div className="glass-panel p-5 rounded-3xl border border-white/10 space-y-3 max-h-[620px] overflow-y-auto pr-1">
+          <div className="glass-panel p-5 rounded-3xl border border-white/10 space-y-3 max-h-[560px] overflow-y-auto pr-1">
             {activeTab === "UNFORESEEN" ? (
               /* Render Unforeseen Items List */
-              unforeseenItems.length === 0 ? (
+              filteredUnforeseen.length === 0 ? (
                 <div className="p-8 text-center rounded-2xl bg-slate-950/60 border border-dashed border-white/10 space-y-2">
                   <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto animate-bounce" />
-                  <p className="text-xs text-slate-400 font-medium">Nenhuma Mensagem Relâmpago cadastrada ainda.</p>
+                  <p className="text-xs text-slate-400 font-medium">
+                    {searchQuery ? "Nenhum imprevisto encontrado com esta pesquisa." : "Nenhuma Mensagem Relâmpago cadastrada ainda."}
+                  </p>
                   <p className="text-[11px] text-slate-500">
                     Use o formulário para criar imprevistos que serão sorteados entre os grupos a cada mês!
                   </p>
                 </div>
               ) : (
-                unforeseenItems.map((u) => (
+                filteredUnforeseen.map((u) => (
                   <div
                     key={u.id}
                     className="p-4 rounded-2xl bg-slate-900/80 border border-amber-500/30 hover:border-amber-500/60 transition-all flex items-start justify-between gap-3"
@@ -598,7 +699,11 @@ export default function AdminCatalogPage() {
             filteredItems.length === 0 ? (
               <div className="p-8 text-center rounded-2xl bg-slate-950/60 border border-dashed border-white/10 space-y-2">
                 <HelpCircle className="w-8 h-8 text-slate-500 mx-auto" />
-                <p className="text-xs text-slate-400 font-medium">Nenhum item nesta categoria ainda.</p>
+                <p className="text-xs text-slate-400 font-medium">
+                  {searchQuery || selectedCategory !== "ALL"
+                    ? "Nenhuma despesa encontrada com os filtros selecionados."
+                    : "Nenhum item nesta categoria ainda."}
+                </p>
                 <p className="text-[11px] text-slate-500">
                   Use o formulário ao lado ou o botão &quot;Restaurar Padrões&quot; no topo.
                 </p>
