@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExpenseType {
+  FIXED
+  TEMPTATION
+  UNFORESEEN
+  LONG_TERM_GOAL
+}
+
+model Group {
+  id               String        @id @default(uuid())
+  qrCodeToken      String        @unique
+  name             String
+  balance          Float         @default(0.0) // Saldo no mês atual
+  savings          Float         @default(0.0) // Saldo acumulado na poupança
+  happinessPoints  Int           @default(0)
+  currentMonth     Int           @default(1)
+  isGameFinished   Boolean       @default(false)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  transactions     Transaction[]
+}
+
+model ExpenseOption {
+  id               String      @id @default(uuid())
+  title            String
+  cost             Float
+  happinessPoints  Int
+  type             ExpenseType
+  category         String?     // ex: "Moradia", "Lazer", "Transporte"
+  description      String?
+}
+
+model UnforeseenEvent {
+  id                      String  @id @default(uuid())
+  title                   String  // ex: "Celular Quebrou"
+  description             String
+  costToFix               Float
+  penaltyIfNotFixedPoints Int     // ex: 30 pontos perdidos se recusar
+  restoredPointsIfFixed   Int     // ex: recupera ou ganha pontos ao arrumar
+}
+
+model Transaction {
+  id          String   @id @default(uuid())
+  groupId     String
+  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  title       String
+  amount      Float
+  points      Int
+  monthNumber Int
+  createdAt   DateTime @default(now())
+}
