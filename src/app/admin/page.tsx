@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Trash2,
   LogOut,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -246,6 +247,14 @@ export default function AdminPage() {
             <Trophy className="w-4 h-4 text-purple-400" />
             <span>Painel do Facilitador</span>
           </div>
+
+          <Link
+            href="/admin/catalog"
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-600/80 hover:bg-purple-500 text-white font-bold text-xs shadow-lg glow-purple border border-purple-400/30 transition-all"
+          >
+            <Sparkles className="w-4 h-4 text-purple-300" />
+            <span>Gestor de Catálogo / Mês 0</span>
+          </Link>
 
           <button
             onClick={() => setShowQrModal(true)}

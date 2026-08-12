@@ -12,19 +12,18 @@ import {
   Sparkles,
   ShoppingBag,
   Home,
-  Zap,
   TrendingUp,
   Award,
-  ArrowRight,
-  RefreshCw,
   ShieldAlert,
-  Plane,
-  Car,
-  Laptop,
   Smile,
   Frown,
   Meh,
   DollarSign,
+  TrendingDown,
+  Percent,
+  Timer,
+  UserCheck,
+  Zap,
 } from "lucide-react";
 
 // Types matching Prisma schema & app state
@@ -39,7 +38,7 @@ interface ExpenseItem {
   category: string;
   isPaid?: boolean;
   description?: string;
-  iconName?: string;
+  consecutiveMonths?: number;
 }
 
 interface UnforeseenEvent {
@@ -54,19 +53,35 @@ interface UnforeseenEvent {
 
 const MONTH_DURATION_SECONDS = 300; // 5 minutos por mês
 const TOTAL_MONTHS = 6;
-const MONTHLY_ALLOWANCE = 2500.0; // Bolsa Auxílio inicial e a cada mês
+const MONTHLY_ALLOWANCE = 1560.0; // Bolsa Auxílio ajustada para R$ 1.560,00
 
 export default function DashboardPage() {
   const router = useRouter();
   // Game state
-  const [currentMonth, setCurrentMonth] = useState<number>(1);
+  const [currentMonth, setCurrentMonth] = useState<number>(0); // 0 = Mês 0 (RPG Personagem)
   const [timeLeft, setTimeLeft] = useState<number>(MONTH_DURATION_SECONDS);
   const [balance, setBalance] = useState<number>(MONTHLY_ALLOWANCE);
   const [savings, setSavings] = useState<number>(0.0);
+  const [investedCapital, setInvestedCapital] = useState<number>(0.0); // Investimentos Fictícios (CDB)
   const [happinessPoints, setHappinessPoints] = useState<number>(100);
   const [groupName, setGroupName] = useState<string>("Grupo Inovadores FinTech");
 
-  // Load group name from URL query parameter or localStorage
+  // Single-use temptations tracking
+  const [boughtTemptationIds, setBoughtTemptationIds] = useState<string[]>([]);
+
+  // Imprevisto random trigger time (between 120s and 180s remaining) & modal countdown (30s)
+  const [unforeseenTriggerTime, setUnforeseenTriggerTime] = useState<number>(150);
+  const [modalCountdown, setModalCountdown] = useState<number | null>(null);
+
+  // RPG Month 0 character choices state
+  const [rpgChoices, setRpgChoices] = useState<{
+    housing?: { title: string; cost: number; points: number };
+    food?: { title: string; cost: number; points: number };
+    transport?: { title: string; cost: number; points: number };
+    tech?: { title: string; cost: number; points: number };
+  }>({});
+
+  // Load group info from URL query parameter or localStorage
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -74,7 +89,6 @@ export default function DashboardPage() {
       const savedName = localStorage.getItem("finGame_groupName");
 
       if (token) {
-        // Fetch group info from API if token present
         fetch(`/api/groups`)
           .then((res) => res.json())
           .then((data) => {
@@ -82,14 +96,15 @@ export default function DashboardPage() {
               const matched = data.groups.find((g: any) => g.qrCodeToken === token);
               if (matched) {
                 if (!matched.isStarted) {
-                  // Redirect to waiting room if game hasn't started yet
                   router.push(`/waiting-room?token=${token}`);
                   return;
                 }
                 setGroupName(matched.name);
-                setBalance(matched.balance);
+                setBalance(matched.balance > 0 ? matched.balance : MONTHLY_ALLOWANCE);
                 setSavings(matched.savings);
-                setHappinessPoints(matched.happinessPoints);
+                if (matched.investments) setInvestedCapital(matched.investments);
+                if (matched.currentMonth !== undefined) setCurrentMonth(matched.currentMonth);
+                if (matched.happinessPoints) setHappinessPoints(matched.happinessPoints);
               }
             }
           })
@@ -99,96 +114,101 @@ export default function DashboardPage() {
       }
     }
   }, [router]);
-  
-  // Expenses state
+
+  // Dynamic fixed expenses list
   const [fixedExpenses, setFixedExpenses] = useState<ExpenseItem[]>([
     {
       id: "f1",
       title: "Aluguel & Condomínio",
-      cost: 1100.0,
+      cost: 750.0,
       happinessPoints: 10,
       type: "FIXED",
       category: "Moradia",
       isPaid: false,
+      consecutiveMonths: 1,
       description: "Despesa fixa obrigatória de moradia para o mês.",
     },
     {
       id: "f2",
       title: "Supermercado & Alimentação",
-      cost: 650.0,
-      happinessPoints: 15,
+      cost: 500.0,
+      happinessPoints: 10,
       type: "FIXED",
       category: "Alimentação",
       isPaid: false,
+      consecutiveMonths: 1,
       description: "Compras essenciais para refeições diárias.",
     },
     {
       id: "f3",
-      title: "Contas de Luz, Água & Gás",
-      cost: 250.0,
+      title: "Transporte & Deslocamento",
+      cost: 150.0,
       happinessPoints: 5,
       type: "FIXED",
-      category: "Utilidades",
+      category: "Transporte",
       isPaid: false,
-      description: "Serviços essenciais de utilidade pública.",
+      consecutiveMonths: 1,
+      description: "Gastos com transporte diário e passe.",
     },
     {
       id: "f4",
-      title: "Internet Fibra + Celular",
-      cost: 150.0,
+      title: "Internet & Celular",
+      cost: 110.0,
       happinessPoints: 10,
       type: "FIXED",
       category: "Tecnologia",
       isPaid: false,
-      description: "Plano de internet rápida para estudos e lazer.",
+      consecutiveMonths: 1,
+      description: "Plano de internet rápida para estudos e conexão.",
     },
   ]);
 
-  const [temptations, setTemptations] = useState<ExpenseItem[]>([
+  // Single-use temptations catalog
+  const [temptations] = useState<ExpenseItem[]>([
     {
       id: "t1",
       title: "Ingresso de Show no Fim de Semana",
-      cost: 220.0,
+      cost: 180.0,
       happinessPoints: 45,
       type: "TEMPTATION",
       category: "Lazer",
-      description: "Shows imperdíveis com a galera no sábado à noite!",
+      description: "Shows imperdíveis com a galera no sábado à noite! (Uso único)",
     },
     {
       id: "t2",
       title: "Jantar Especial em Restaurante Chique",
-      cost: 180.0,
+      cost: 140.0,
       happinessPoints: 35,
       type: "TEMPTATION",
       category: "Gastronomia",
-      description: "Experiência culinária única para relaxar na sexta.",
+      description: "Experiência culinária única para relaxar na sexta. (Uso único)",
     },
     {
       id: "t3",
-      title: "Fone de Ouvido Noise Cancelling Premium",
-      cost: 450.0,
+      title: "Fone de Ouvido Noise Cancelling",
+      cost: 320.0,
       happinessPoints: 70,
       type: "TEMPTATION",
       category: "Gadgets",
-      description: "Foco total nos estudos e música sem ruídos.",
+      description: "Foco total nos estudos e música sem ruídos. (Uso único)",
     },
     {
       id: "t4",
       title: "Passeio de Bate-Volta na Praia",
-      cost: 150.0,
+      cost: 120.0,
       happinessPoints: 30,
       type: "TEMPTATION",
       category: "Viagem",
-      description: "Sol, mar e recarga de energias com os amigos.",
+      description: "Sol, mar e recarga de energias com os amigos. (Uso único)",
     },
     {
       id: "t5",
       title: "Assinatura VIP de Plataforma de Games",
-      cost: 80.0,
+      cost: 65.0,
       happinessPoints: 20,
       type: "TEMPTATION",
       category: "Entretenimento",
-      description: "Acesso ilimitado aos jogos mais recentes da temporada.",
+      description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
     },
   ]);
 
@@ -196,7 +216,7 @@ export default function DashboardPage() {
     {
       id: "g1",
       title: "Viagem dos Sonhos (Mochilão Europa)",
-      cost: 4000.0,
+      cost: 3200.0,
       happinessPoints: 300,
       type: "LONG_TERM_GOAL",
       category: "Sonho de Vida",
@@ -205,7 +225,7 @@ export default function DashboardPage() {
     {
       id: "g2",
       title: "Entrada do Carro Próprio",
-      cost: 3500.0,
+      cost: 2800.0,
       happinessPoints: 250,
       type: "LONG_TERM_GOAL",
       category: "Patrimônio",
@@ -213,8 +233,8 @@ export default function DashboardPage() {
     },
     {
       id: "g3",
-      title: "Fundo de Emergência & Reserva de Investimentos",
-      cost: 2000.0,
+      title: "Reserva de Investimentos & Fundo de Emergência",
+      cost: 1800.0,
       happinessPoints: 180,
       type: "LONG_TERM_GOAL",
       category: "Segurança Financeira",
@@ -227,16 +247,26 @@ export default function DashboardPage() {
   const [resolvedUnforeseens, setResolvedUnforeseens] = useState<string[]>([]);
   const [notification, setNotification] = useState<{ message: string; type: "success" | "warning" | "error" } | null>(null);
 
-  // Auto notification dismissal
+  // Dismiss notification banner automatically
   useEffect(() => {
     if (notification) {
-      const timer = setTimeout(() => setNotification(null), 4000);
+      const timer = setTimeout(() => setNotification(null), 4500);
       return () => clearTimeout(timer);
     }
   }, [notification]);
 
-  // Real-time 5-minute timer tick
+  // Randomize unforeseen trigger time whenever month changes
   useEffect(() => {
+    if (currentMonth > 0) {
+      const randomTime = Math.floor(Math.random() * (180 - 120 + 1)) + 120;
+      setUnforeseenTriggerTime(randomTime);
+    }
+  }, [currentMonth]);
+
+  // Real-time month timer tick
+  useEffect(() => {
+    if (currentMonth === 0) return; // Month 0 (RPG Setup) has no auto-advancing timer
+
     const interval = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
@@ -244,8 +274,8 @@ export default function DashboardPage() {
           return MONTH_DURATION_SECONDS;
         }
 
-        // Trigger Unforeseen event at minute 3 (120s remaining = 2 minutes elapsed)
-        if (prev === 120 && !activeUnforeseen) {
+        // Trigger Imprevisto at random time (between 120s and 180s remaining)
+        if (prev === unforeseenTriggerTime && !activeUnforeseen) {
           triggerUnforeseenEvent();
         }
 
@@ -254,16 +284,38 @@ export default function DashboardPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentMonth, fixedExpenses, balance, savings]);
+  }, [currentMonth, fixedExpenses, balance, savings, unforeseenTriggerTime, activeUnforeseen]);
 
-  // Trigger Imprevisto at minute 3
+  // Active Unforeseen Modal Countdown Effect (30 seconds to answer)
+  useEffect(() => {
+    if (modalCountdown === null || !activeUnforeseen) return;
+
+    if (modalCountdown <= 0) {
+      // Auto-apply penalty immediately when decision timer expires
+      handleResolveUnforeseen(false);
+      setModalCountdown(null);
+      setNotification({
+        message: "⚡ Tempo esgotado para responder o imprevisto! Penalidade aplicada automaticamente.",
+        type: "error",
+      });
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setModalCountdown((prev) => (prev !== null ? prev - 1 : null));
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [modalCountdown, activeUnforeseen]);
+
+  // Trigger Imprevisto at random time between 2 to 3 minutes
   const triggerUnforeseenEvent = () => {
     const events: UnforeseenEvent[] = [
       {
         id: `u-${currentMonth}-1`,
         title: "📱 Tela do Celular Quebrou!",
-        description: "Você deixou seu celular cair no chão. Para consertar o display custará dinheiro, ou você terá que ficar incomunicável.",
-        costToFix: 350.0,
+        description: "Seu celular caiu no chão. O reparo imediato evita transtornos nos estudos e trabalho.",
+        costToFix: 260.0,
         penaltyIfNotFixedPoints: 40,
         restoredPointsIfFixed: 10,
         triggeredMonth: currentMonth,
@@ -271,17 +323,17 @@ export default function DashboardPage() {
       {
         id: `u-${currentMonth}-2`,
         title: "🦷 Emergência Odontológica",
-        description: "Dor de dente súbita no meio da semana! Precisa de consulta de urgência e medicação.",
-        costToFix: 280.0,
+        description: "Consulta de dor de dente urgente no meio do mês! Precisa de medicação imediata.",
+        costToFix: 220.0,
         penaltyIfNotFixedPoints: 35,
         restoredPointsIfFixed: 5,
         triggeredMonth: currentMonth,
       },
       {
         id: `u-${currentMonth}-3`,
-        title: "💻 Notebook da Faculdade Travou",
-        description: "Falha na memória RAM antes de entregar um trabalho vital. Reparo urgente necessário.",
-        costToFix: 400.0,
+        title: "💻 Manutenção do Notebook da Faculdade",
+        description: "Falha na memória RAM antes da entrega de um projeto importante.",
+        costToFix: 310.0,
         penaltyIfNotFixedPoints: 50,
         restoredPointsIfFixed: 15,
         triggeredMonth: currentMonth,
@@ -291,6 +343,7 @@ export default function DashboardPage() {
     const selected = events[(currentMonth - 1) % events.length];
     if (!resolvedUnforeseens.includes(selected.id)) {
       setActiveUnforeseen(selected);
+      setModalCountdown(30); // Start 30s countdown inside modal
     }
   };
 
@@ -337,32 +390,118 @@ export default function DashboardPage() {
     return { success: true, usedSavings, newBalance, newSavings };
   };
 
-  // Turn of month logic
-  const handleMonthEnd = () => {
-    // Check unpaid fixed expenses
-    const unpaidFixed = fixedExpenses.filter((e) => !e.isPaid);
-    let penalty = 0;
+  // Confirm Month 0 RPG character creation
+  const handleConfirmRPGCharacter = () => {
+    if (!rpgChoices.housing || !rpgChoices.food || !rpgChoices.transport || !rpgChoices.tech) {
+      setNotification({
+        message: "Escolha uma opção para Moradia, Alimentação, Transporte e Conectividade para continuar!",
+        type: "warning",
+      });
+      return;
+    }
 
-    // Carried over unpaid expenses with 8% interest added
+    const initialFixedExpenses: ExpenseItem[] = [
+      {
+        id: `f1-m1`,
+        title: rpgChoices.housing.title,
+        cost: rpgChoices.housing.cost,
+        happinessPoints: rpgChoices.housing.points,
+        type: "FIXED",
+        category: "Moradia",
+        isPaid: false,
+        consecutiveMonths: 1,
+        description: "Sua escolha de moradia definida no Mês 0 (RPG).",
+      },
+      {
+        id: `f2-m1`,
+        title: rpgChoices.food.title,
+        cost: rpgChoices.food.cost,
+        happinessPoints: rpgChoices.food.points,
+        type: "FIXED",
+        category: "Alimentação",
+        isPaid: false,
+        consecutiveMonths: 1,
+        description: "Sua escolha de alimentação definida no Mês 0 (RPG).",
+      },
+      {
+        id: `f3-m1`,
+        title: rpgChoices.transport.title,
+        cost: rpgChoices.transport.cost,
+        happinessPoints: rpgChoices.transport.points,
+        type: "FIXED",
+        category: "Transporte",
+        isPaid: false,
+        consecutiveMonths: 1,
+        description: "Sua escolha de transporte definida no Mês 0 (RPG).",
+      },
+      {
+        id: `f4-m1`,
+        title: rpgChoices.tech.title,
+        cost: rpgChoices.tech.cost,
+        happinessPoints: rpgChoices.tech.points,
+        type: "FIXED",
+        category: "Tecnologia",
+        isPaid: false,
+        consecutiveMonths: 1,
+        description: "Sua escolha de conectividade definida no Mês 0 (RPG).",
+      },
+    ];
+
+    const totalRPGPoints =
+      100 +
+      rpgChoices.housing.points +
+      rpgChoices.food.points +
+      rpgChoices.transport.points +
+      rpgChoices.tech.points;
+
+    setFixedExpenses(initialFixedExpenses);
+    setHappinessPoints(totalRPGPoints);
+    setCurrentMonth(1);
+    setBalance(MONTHLY_ALLOWANCE);
+    setTimeLeft(MONTH_DURATION_SECONDS);
+
+    syncGroupMetrics(MONTHLY_ALLOWANCE, savings, totalRPGPoints, 1);
+
+    setNotification({
+      message: "🎭 Personagem montado com sucesso! Mês 1 iniciado. Gerencie seu orçamento com sabedoria!",
+      type: "success",
+    });
+  };
+
+  // Turn of month logic (with 8% interest & 1.5 power exponential penalty)
+  const handleMonthEnd = () => {
+    const unpaidFixed = fixedExpenses.filter((e) => !e.isPaid);
+    let totalPenalty = 0;
+
+    // Carried over unpaid expenses with +8% interest and incremented consecutive unpaid count
     const carriedOverExpenses: ExpenseItem[] = unpaidFixed.map((e, idx) => {
-      const alreadyOverdue = e.title.includes("⚠️ Atrasado");
-      const titleClean = alreadyOverdue ? e.title : `${e.title} ⚠️ (Atrasado +8% Juros)`;
+      const prevConsecutive = e.consecutiveMonths || 1;
+      const nextConsecutive = prevConsecutive + 1;
+
+      // Exponential penalty formula: 50 * (mesesAtrasados)^1.5
+      const penaltyForThis = Math.round(50 * Math.pow(prevConsecutive, 1.5));
+      totalPenalty += penaltyForThis;
+
       const newCost = Math.round(e.cost * 1.08 * 100) / 100;
+      const titleClean = e.title.includes("⚠️ Atrasado")
+        ? e.title.replace(/\(Atrasado \d+ mes\(es\).*\)/, `(Atrasado ${nextConsecutive} mes(es) | +8% Juros)`)
+        : `${e.title} ⚠️ (Atrasado ${nextConsecutive} mes(es) | +8% Juros)`;
+
       return {
         ...e,
         id: `overdue-${currentMonth}-${idx}-${Date.now()}`,
         title: titleClean,
         cost: newCost,
         isPaid: false,
-        description: `Despesa acumulada não paga no mês anterior com 8% de juros inclusos.`,
+        consecutiveMonths: nextConsecutive,
+        description: `Despesa não paga por ${prevConsecutive} mês(es). Inclui 8% de juros e penalidade exponencial ^1.5.`,
       };
     });
 
     if (unpaidFixed.length > 0) {
-      penalty = 50;
-      setHappinessPoints((prev) => Math.max(0, prev - penalty));
+      setHappinessPoints((prev) => Math.max(0, prev - totalPenalty));
       setNotification({
-        message: `Fim do Mês ${currentMonth}: Penalidade -50 pts! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros e foram transferidas para o Mês ${currentMonth + 1}.`,
+        message: `Fim do Mês ${currentMonth}: Penalidade de -${totalPenalty} pts de Felicidade (Escalonada ^1.5)! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros!`,
         type: "error",
       });
     } else {
@@ -372,11 +511,17 @@ export default function DashboardPage() {
       });
     }
 
+    // Apply 2% monthly yield to Invested Capital (CDB Fictício)
+    let updatedInvested = investedCapital;
+    if (investedCapital > 0) {
+      updatedInvested = Math.round(investedCapital * 1.02 * 100) / 100;
+      setInvestedCapital(updatedInvested);
+    }
+
     // Auto-transfer remaining balance to savings
     const remainingBalance = Math.max(0, balance);
     const newSavings = savings + remainingBalance;
     const newBalance = MONTHLY_ALLOWANCE;
-
     setSavings(newSavings);
 
     if (currentMonth < TOTAL_MONTHS) {
@@ -384,58 +529,33 @@ export default function DashboardPage() {
       setCurrentMonth(nextMonth);
       setBalance(newBalance);
 
-      // Default base fixed expenses for the new month
-      const baseNewMonthExpenses: ExpenseItem[] = [
-        {
-          id: `f1-m${nextMonth}`,
-          title: "Aluguel & Condomínio",
-          cost: 1100.0,
-          happinessPoints: 10,
-          type: "FIXED",
-          category: "Moradia",
+      // Default base expenses for new month (re-uses current character profile)
+      const baseNewMonthExpenses: ExpenseItem[] = fixedExpenses
+        .filter((e) => !e.title.includes("⚠️ Atrasado"))
+        .map((e, idx) => ({
+          ...e,
+          id: `f${idx + 1}-m${nextMonth}`,
           isPaid: false,
-          description: "Despesa fixa obrigatória de moradia para o mês.",
-        },
-        {
-          id: `f2-m${nextMonth}`,
-          title: "Supermercado & Alimentação",
-          cost: 650.0,
-          happinessPoints: 15,
-          type: "FIXED",
-          category: "Alimentação",
-          isPaid: false,
-          description: "Compras essenciais para refeições diárias.",
-        },
-        {
-          id: `f3-m${nextMonth}`,
-          title: "Contas de Luz, Água & Gás",
-          cost: 250.0,
-          happinessPoints: 5,
-          type: "FIXED",
-          category: "Utilidades",
-          isPaid: false,
-          description: "Serviços essenciais de utilidade pública.",
-        },
-        {
-          id: `f4-m${nextMonth}`,
-          title: "Internet Fibra + Celular",
-          cost: 150.0,
-          happinessPoints: 10,
-          type: "FIXED",
-          category: "Tecnologia",
-          isPaid: false,
-          description: "Plano de internet rápida para estudos e lazer.",
-        },
-      ];
+          consecutiveMonths: 1,
+        }));
 
-      // Combine: carried over unpaid items (with 8% juros) + new month base expenses
       setFixedExpenses([...carriedOverExpenses, ...baseNewMonthExpenses]);
       setActiveUnforeseen(null);
+      setModalCountdown(null);
 
-      syncGroupMetrics(newBalance, newSavings, Math.max(0, happinessPoints - penalty), nextMonth);
+      syncGroupMetrics(newBalance, newSavings, Math.max(0, happinessPoints - totalPenalty), nextMonth);
     } else {
+      // FINAL MONTH (Mês 6 Vencimento dos Investimentos!)
+      let finalBonus = 0;
+      if (updatedInvested > 0) {
+        finalBonus = 150; // Massivo bônus de maturidade no Mês Final sem impostos!
+        setBalance((prev) => prev + updatedInvested);
+        setHappinessPoints((prev) => prev + finalBonus);
+        setInvestedCapital(0);
+      }
+
       setNotification({
-        message: "🎉 PARABÉNS! Você chegou ao Mês Final! Use a sua Poupança para comprar as Metas de Longo Prazo!",
+        message: `🎉 PARABÉNS! Você chegou ao Mês Final! ${updatedInvested > 0 ? `Investimento resgatado SEM IMPOSTOS + Bônus de +${finalBonus} pts!` : "Use a sua Poupança para comprar Metas de Longo Prazo!"}`,
         type: "success",
       });
     }
@@ -475,8 +595,16 @@ export default function DashboardPage() {
     });
   };
 
-  // Action: Buy Temptation
+  // Action: Buy Temptation (Single-use per item)
   const handleBuyTemptation = (item: ExpenseItem) => {
+    if (boughtTemptationIds.includes(item.id)) {
+      setNotification({
+        message: "Esta tentação já foi adquirida! Permito comprar apenas 1 vez por item.",
+        type: "warning",
+      });
+      return;
+    }
+
     const payment = deductPayment(item.cost);
     if (!payment.success) {
       setNotification({
@@ -490,6 +618,7 @@ export default function DashboardPage() {
     setBalance(payment.newBalance);
     setSavings(payment.newSavings);
     setHappinessPoints(newPoints);
+    setBoughtTemptationIds((prev) => [...prev, item.id]);
 
     syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
 
@@ -499,6 +628,33 @@ export default function DashboardPage() {
 
     setNotification({
       message: `Comprou "${item.title}"! +${item.happinessPoints} Pontos de Felicidade!${savingsMsg}`,
+      type: "success",
+    });
+  };
+
+  // Action: Buy Flash Promo inside Imprevisto modal
+  const handleBuyFlashPromo = () => {
+    const promoCost = 130.0;
+    const promoPoints = 50;
+
+    const payment = deductPayment(promoCost);
+    if (!payment.success) {
+      setNotification({
+        message: "Saldo insuficiente para aproveitar a Promoção Flash!",
+        type: "warning",
+      });
+      return;
+    }
+
+    const newPoints = happinessPoints + promoPoints;
+    setBalance(payment.newBalance);
+    setSavings(payment.newSavings);
+    setHappinessPoints(newPoints);
+
+    syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
+
+    setNotification({
+      message: `⚡ Promoção Flash adquirida! +50 Pontos de Felicidade por apenas R$ 130,00!`,
       type: "success",
     });
   };
@@ -546,6 +702,46 @@ export default function DashboardPage() {
 
     setResolvedUnforeseens((prev) => [...prev, activeUnforeseen.id]);
     setActiveUnforeseen(null);
+    setModalCountdown(null);
+  };
+
+  // Action: Invest money into CDB Fictício (+2% yield/month)
+  const handleInvestMoney = (amount: number) => {
+    if (balance < amount) {
+      setNotification({
+        message: "Saldo mensal insuficiente para aplicar em investimentos!",
+        type: "warning",
+      });
+      return;
+    }
+    const newBalance = balance - amount;
+    const newInvested = investedCapital + amount;
+    setBalance(newBalance);
+    setInvestedCapital(newInvested);
+    syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth);
+    setNotification({
+      message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} aplicados no CDB Fictício (+2% rendimento/mês)!`,
+      type: "success",
+    });
+  };
+
+  // Action: Early Withdraw from Investment (22.5% Tax Penalty before Month 6)
+  const handleEarlyWithdrawInvestment = () => {
+    if (investedCapital <= 0) return;
+
+    // 22.5% Income Tax penalty for withdrawing before final maturity
+    const taxAmount = Math.round(investedCapital * 0.225 * 100) / 100;
+    const netAmount = Math.round((investedCapital - taxAmount) * 100) / 100;
+
+    const newBalance = balance + netAmount;
+    setBalance(newBalance);
+    setInvestedCapital(0);
+    syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth);
+
+    setNotification({
+      message: `⚠️ Resgate Antecipado: R$ ${taxAmount.toFixed(2)} pagos em Imposto de Renda (22,5%). R$ ${netAmount.toFixed(2)} devolvidos ao saldo.`,
+      type: "warning",
+    });
   };
 
   // Action: Deposit to Savings manually
@@ -618,15 +814,12 @@ export default function DashboardPage() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  // Calculate percentage of timer
   const timerPercentage = ((MONTH_DURATION_SECONDS - timeLeft) / MONTH_DURATION_SECONDS) * 100;
   
-  // Calculate total unpaid fixed cost
   const unpaidTotalCost = fixedExpenses
     .filter((e) => !e.isPaid)
     .reduce((sum, e) => sum + e.cost, 0);
 
-  // Helper for Happiness mood icon & status
   const getHappinessState = (pts: number) => {
     if (pts >= 180) return { label: "Radiante", icon: Smile, color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" };
     if (pts >= 100) return { label: "Equilibrado", icon: Meh, color: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
@@ -636,6 +829,204 @@ export default function DashboardPage() {
   const happyState = getHappinessState(happinessPoints);
   const MoodIcon = happyState.icon;
 
+  // ==========================================
+  // RENDER MONTH 0 (RPG CHARACTER SETUP SCREEN)
+  // ==========================================
+  if (currentMonth === 0) {
+    return (
+      <div className="min-h-screen p-4 sm:p-6 text-slate-100 flex flex-col items-center justify-center max-w-5xl mx-auto space-y-6">
+        <div className="text-center space-y-2 max-w-xl">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold uppercase tracking-wider">
+            <UserCheck className="w-4 h-4 text-purple-400" />
+            <span>Mês 0 • Criação do Personagem (RPG)</span>
+          </div>
+          <h1 className="text-3xl font-black text-white tracking-tight">Monte o Estilo de Vida da sua Equipe</h1>
+          <p className="text-xs text-slate-300">
+            Escolha como a sua equipe vai viver durante a dinâmica. Suas decisões definem suas <strong className="text-emerald-400">Despesas Fixas Mensais</strong> e seus <strong className="text-amber-300">Pontos iniciais de Felicidade</strong>!
+          </p>
+        </div>
+
+        {/* Categories Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 w-full">
+          {/* Category 1: Moradia */}
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <Home className="w-5 h-5 text-purple-400" />
+              <h3 className="font-bold text-white text-sm">1. Moradia & Habitação</h3>
+            </div>
+            <div className="space-y-2">
+              {[
+                { title: "Quarto Compartilhado", cost: 500, points: 5, desc: "Custo baixo, pouca privacidade." },
+                { title: "Kitnet Própria", cost: 750, points: 10, desc: "Espaço independente e confortável." },
+                { title: "Apartamento Completo", cost: 1100, points: 20, desc: "Alto conforto, condomínio e infraestrutura." },
+              ].map((opt) => (
+                <button
+                  key={opt.title}
+                  onClick={() => setRpgChoices((prev) => ({ ...prev, housing: opt }))}
+                  className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                    rpgChoices.housing?.title === opt.title
+                      ? "bg-purple-600/30 border-purple-500 text-white shadow-lg glow-purple"
+                      : "bg-slate-900/60 border-white/10 hover:border-white/20 text-slate-300"
+                  }`}
+                >
+                  <div>
+                    <div className="font-bold text-xs">{opt.title}</div>
+                    <div className="text-[11px] text-slate-400">{opt.desc}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-extrabold text-emerald-400">R$ {opt.cost}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{opt.points} pts</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category 2: Alimentação */}
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <ShoppingBag className="w-5 h-5 text-amber-400" />
+              <h3 className="font-bold text-white text-sm">2. Alimentação & Gastronomia</h3>
+            </div>
+            <div className="space-y-2">
+              {[
+                { title: "Marmita & Básico", cost: 350, points: 5, desc: "Refeições essenciais preparadas em casa." },
+                { title: "Supermercado Completo", cost: 500, points: 10, desc: "Boa variedade de alimentos diários." },
+                { title: "Alimentação Gourmet", cost: 700, points: 20, desc: "Ingredientes nobres e delivery nos fins de semana." },
+              ].map((opt) => (
+                <button
+                  key={opt.title}
+                  onClick={() => setRpgChoices((prev) => ({ ...prev, food: opt }))}
+                  className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                    rpgChoices.food?.title === opt.title
+                      ? "bg-purple-600/30 border-purple-500 text-white shadow-lg glow-purple"
+                      : "bg-slate-900/60 border-white/10 hover:border-white/20 text-slate-300"
+                  }`}
+                >
+                  <div>
+                    <div className="font-bold text-xs">{opt.title}</div>
+                    <div className="text-[11px] text-slate-400">{opt.desc}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-extrabold text-emerald-400">R$ {opt.cost}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{opt.points} pts</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category 3: Transporte */}
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <TrendingUp className="w-5 h-5 text-emerald-400" />
+              <h3 className="font-bold text-white text-sm">3. Transporte & Mobilidade</h3>
+            </div>
+            <div className="space-y-2">
+              {[
+                { title: "Transporte Público", cost: 120, points: 5, desc: "Ônibus e metrô no dia a dia." },
+                { title: "Passe Livre + Carona/App", cost: 200, points: 10, desc: "Agilidade extra para se locomover." },
+              ].map((opt) => (
+                <button
+                  key={opt.title}
+                  onClick={() => setRpgChoices((prev) => ({ ...prev, transport: opt }))}
+                  className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                    rpgChoices.transport?.title === opt.title
+                      ? "bg-purple-600/30 border-purple-500 text-white shadow-lg glow-purple"
+                      : "bg-slate-900/60 border-white/10 hover:border-white/20 text-slate-300"
+                  }`}
+                >
+                  <div>
+                    <div className="font-bold text-xs">{opt.title}</div>
+                    <div className="text-[11px] text-slate-400">{opt.desc}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-extrabold text-emerald-400">R$ {opt.cost}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{opt.points} pts</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Category 4: Conectividade */}
+          <div className="glass-panel p-5 rounded-2xl border border-white/10 space-y-3">
+            <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+              <Sparkles className="w-5 h-5 text-indigo-400" />
+              <h3 className="font-bold text-white text-sm">4. Conectividade & Tecnologia</h3>
+            </div>
+            <div className="space-y-2">
+              {[
+                { title: "Internet Básica", cost: 90, points: 5, desc: "Navegação essencial para estudos." },
+                { title: "Fibra + Streamings VIP", cost: 150, points: 15, desc: "Conexão ultra-rápida e entretenimento." },
+              ].map((opt) => (
+                <button
+                  key={opt.title}
+                  onClick={() => setRpgChoices((prev) => ({ ...prev, tech: opt }))}
+                  className={`w-full p-3 rounded-xl border text-left transition-all flex items-center justify-between ${
+                    rpgChoices.tech?.title === opt.title
+                      ? "bg-purple-600/30 border-purple-500 text-white shadow-lg glow-purple"
+                      : "bg-slate-900/60 border-white/10 hover:border-white/20 text-slate-300"
+                  }`}
+                >
+                  <div>
+                    <div className="font-bold text-xs">{opt.title}</div>
+                    <div className="text-[11px] text-slate-400">{opt.desc}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-extrabold text-emerald-400">R$ {opt.cost}</div>
+                    <div className="text-[10px] text-amber-300 font-bold">+{opt.points} pts</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Card & Start Button */}
+        <div className="w-full glass-panel p-6 rounded-3xl border border-purple-500/40 glow-purple flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="space-y-1 text-center sm:text-left">
+            <div className="text-xs text-slate-300">
+              Custo Fixo Mensal Definido:{" "}
+              <strong className="text-emerald-400 text-sm font-extrabold">
+                R${" "}
+                {(
+                  (rpgChoices.housing?.cost || 0) +
+                  (rpgChoices.food?.cost || 0) +
+                  (rpgChoices.transport?.cost || 0) +
+                  (rpgChoices.tech?.cost || 0)
+                ).toFixed(2)}
+              </strong>{" "}
+              / mês
+            </div>
+            <div className="text-xs text-slate-300">
+              Bolsa Auxílio: <strong className="text-white">R$ 1.560,00</strong> | Pontos de Felicidade Iniciais:{" "}
+              <strong className="text-amber-300 font-extrabold">
+                {100 +
+                  (rpgChoices.housing?.points || 0) +
+                  (rpgChoices.food?.points || 0) +
+                  (rpgChoices.transport?.points || 0) +
+                  (rpgChoices.tech?.points || 0)}{" "}
+                pts
+              </strong>
+            </div>
+          </div>
+
+          <button
+            onClick={handleConfirmRPGCharacter}
+            className="px-8 py-4 rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white font-black text-sm shadow-xl glow-purple transition-all flex items-center gap-2"
+          >
+            <UserCheck className="w-5 h-5" />
+            <span>Confirmar Personagem e Iniciar Mês 1</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // RENDER MAIN DASHBOARD (MONTHS 1 TO 6)
+  // ==========================================
   return (
     <div className="min-h-screen pb-16 text-slate-100 selection:bg-emerald-500/20">
       {/* Toast Notification Banner */}
@@ -668,7 +1059,9 @@ export default function DashboardPage() {
               <h1 className="text-base font-bold text-white tracking-wide">{groupName}</h1>
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span>Sala Conectada • {currentMonth === TOTAL_MONTHS ? "Mês Final!" : `Mês ${currentMonth} de ${TOTAL_MONTHS}`}</span>
+                <span>
+                  Sala Conectada • {currentMonth === TOTAL_MONTHS ? "Mês Final!" : `Mês ${currentMonth} de ${TOTAL_MONTHS}`}
+                </span>
               </div>
             </div>
           </div>
@@ -703,22 +1096,21 @@ export default function DashboardPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-6">
-        {/* Metric Cards Row */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+        {/* Metric Cards Row (4 Columns: Balance, Savings, Investments, Happiness) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* Card 1: Monthly Balance */}
-          <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all pointer-events-none" />
+          <div className="glass-panel p-4 rounded-2xl relative overflow-hidden group">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Saldo Disponível (Mês)</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Saldo Disponível (Mês)</span>
               <div className="p-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <Wallet className="w-5 h-5" />
+                <Wallet className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-3xl font-extrabold text-white tracking-tight">
+            <div className="text-2xl font-extrabold text-white tracking-tight">
               R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5">
-              <span>Capital Total Disponível:</span>
+            <div className="mt-2.5 flex items-center justify-between text-[11px] text-slate-400 pt-2 border-t border-white/5">
+              <span>Capital Total:</span>
               <span className="font-bold text-emerald-300">
                 R$ {(balance + savings).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </span>
@@ -726,61 +1118,88 @@ export default function DashboardPage() {
           </div>
 
           {/* Card 2: Accumulated Savings */}
-          <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-purple-500/10 rounded-full blur-2xl group-hover:bg-purple-500/20 transition-all pointer-events-none" />
+          <div className="glass-panel p-4 rounded-2xl relative overflow-hidden group">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Poupança Acumulada</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Poupança Acumulada</span>
               <div className="p-2 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
-                <PiggyBank className="w-5 h-5" />
+                <PiggyBank className="w-4 h-4" />
               </div>
             </div>
-            <div className="text-3xl font-extrabold text-purple-300 tracking-tight">
+            <div className="text-2xl font-extrabold text-purple-300 tracking-tight">
               R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-400 pt-2 border-t border-white/5 gap-2">
+            <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-white/5 gap-1">
               <button
-                onClick={() => handleDepositToSavings(Math.min(balance, 500))}
+                onClick={() => handleDepositToSavings(Math.min(balance, 200))}
                 disabled={balance <= 0}
-                className="px-2.5 py-1 rounded bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/30 text-purple-200 font-semibold text-[11px] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                title="Transferir até R$500 do saldo para a poupança"
+                className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-semibold text-[10px] disabled:opacity-40"
               >
-                + Guardar Saldo
+                + Guardar
               </button>
               <button
-                onClick={() => handleWithdrawFromSavings(Math.min(savings, 500))}
+                onClick={() => handleWithdrawFromSavings(Math.min(savings, 200))}
                 disabled={savings <= 0}
-                className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/30 text-emerald-200 font-semibold text-[11px] disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-                title="Resgatar até R$500 da poupança para o saldo"
+                className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold text-[10px] disabled:opacity-40"
               >
-                - Resgatar R$500
+                - Resgatar
               </button>
             </div>
           </div>
 
-          {/* Card 3: Happiness Points Score */}
-          <div className="glass-panel p-5 rounded-2xl relative overflow-hidden group">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all pointer-events-none" />
+          {/* Card 3: Investimentos Fictícios (CDB +2%/mês) */}
+          <div className="glass-panel p-4 rounded-2xl relative overflow-hidden group border border-indigo-500/20">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Pontos de Felicidade</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">Investimento (CDB)</span>
+              <div className="p-2 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
+                <Percent className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="text-2xl font-extrabold text-indigo-200 tracking-tight">
+              R$ {investedCapital.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+            </div>
+            <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-white/5 gap-1">
+              <button
+                onClick={() => handleInvestMoney(Math.min(balance, 300))}
+                disabled={balance <= 0}
+                className="px-2 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 font-semibold text-[10px] disabled:opacity-40"
+              >
+                + Aplicação (+2%)
+              </button>
+              {investedCapital > 0 && currentMonth < TOTAL_MONTHS && (
+                <button
+                  onClick={handleEarlyWithdrawInvestment}
+                  className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-semibold text-[10px]"
+                  title="Resgate antecipado com 22,5% de Imposto de Renda"
+                >
+                  Saída (-22,5% IR)
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Card 4: Happiness Points Score */}
+          <div className="glass-panel p-4 rounded-2xl relative overflow-hidden group">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Pontos de Felicidade</span>
               <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                <Heart className="w-5 h-5 fill-amber-400/20" />
+                <Heart className="w-4 h-4 fill-amber-400/20" />
               </div>
             </div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-amber-300 tracking-tight">{happinessPoints}</span>
-              <span className="text-xs text-amber-400 font-semibold">pts acumulados</span>
+              <span className="text-2xl font-extrabold text-amber-300 tracking-tight">{happinessPoints}</span>
+              <span className="text-[10px] text-amber-400 font-semibold">pts</span>
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs pt-2 border-t border-white/5">
-              <span className="text-slate-400">Estado Emocional:</span>
-              <div className={`flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-bold ${happyState.color}`}>
-                <MoodIcon className="w-3.5 h-3.5" />
+            <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-white/5">
+              <span className="text-slate-400">Estado:</span>
+              <div className={`flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold ${happyState.color}`}>
+                <MoodIcon className="w-3 h-3" />
                 <span>{happyState.label}</span>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Final Month Goals Section (Visible when in final month or when savings > 0) */}
+        {/* Final Month Goals Section */}
         {currentMonth === TOTAL_MONTHS && (
           <section className="glass-panel p-6 rounded-2xl border-2 border-purple-500/40 glow-purple bg-gradient-to-b from-purple-950/20 to-slate-900/60">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-purple-500/20">
@@ -790,11 +1209,11 @@ export default function DashboardPage() {
                   <h2 className="text-lg font-bold text-white">Loja de Metas de Longo Prazo (Mês Final)</h2>
                 </div>
                 <p className="text-xs text-slate-300 mt-1">
-                  Use o saldo acumulado da sua <strong className="text-purple-300">Poupança</strong> para comprar conquistas e alavancar seus Pontos de Felicidade no ranking final!
+                  Use o saldo acumulado da sua <strong className="text-purple-300">Poupança</strong> e de <strong className="text-indigo-300">Investimentos resgatados sem impostos</strong> para comprar conquistas!
                 </p>
               </div>
               <div className="px-4 py-2 rounded-xl bg-purple-500/20 border border-purple-500/40 text-purple-300 font-bold text-sm">
-                Saldo Poupança: R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                Poupança: R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
               </div>
             </div>
 
@@ -859,7 +1278,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-white">Despesas Fixas do Mês</h2>
-                    <p className="text-xs text-slate-400">Obrigatórias para evitar penalidade (-50 pts e +8% juros)</p>
+                    <p className="text-xs text-slate-400">Obrigatórias (+8% Juros & Penalidade Exponencial ^1.5)</p>
                   </div>
                 </div>
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-white/10">
@@ -910,7 +1329,7 @@ export default function DashboardPage() {
 
                       <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center justify-between">
                         <span className="text-xs text-slate-500">
-                          Status: {expense.isPaid ? "✅ Pago" : expense.title.includes("⚠️ Atrasado") ? "⚠️ Atrasado (+8% Juros)" : "⏳ Pendente"}
+                          Status: {expense.isPaid ? "✅ Pago" : expense.title.includes("⚠️ Atrasado") ? `⚠️ Atrasado (+8% Juros)` : "⏳ Pendente"}
                         </span>
                         {!expense.isPaid ? (
                           <button
@@ -940,7 +1359,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Right Column: Temptation Feed (Feed de Tentações) */}
+          {/* Right Column: Temptation Feed (Single-Use Only) */}
           <div className="lg:col-span-7 space-y-4">
             <div className="glass-panel p-5 rounded-2xl border border-white/10">
               <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/10">
@@ -950,25 +1369,30 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-white">Feed de Tentações de Gastos</h2>
-                    <p className="text-xs text-slate-400">Gaste seu dinheiro para alavancar Pontos de Felicidade!</p>
+                    <p className="text-xs text-slate-400">Gaste seu dinheiro para alavancar Felicidade! (Uso único por item)</p>
                   </div>
                 </div>
                 <span className="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full">
-                  Opcional
+                  Compra Única
                 </span>
               </div>
 
               {/* Grid of Temptation Cards */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {temptations.map((item) => {
+                  const isBought = boughtTemptationIds.includes(item.id);
                   const totalFunds = balance + savings;
-                  const canPay = totalFunds >= item.cost;
+                  const canPay = totalFunds >= item.cost && !isBought;
                   const usesSavings = balance < item.cost && canPay;
 
                   return (
                     <div
                       key={item.id}
-                      className="glass-panel-interactive p-4 rounded-xl border border-white/10 flex flex-col justify-between"
+                      className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
+                        isBought
+                          ? "bg-slate-950/40 border-white/5 opacity-60"
+                          : "glass-panel-interactive border-white/10"
+                      }`}
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
@@ -993,7 +1417,9 @@ export default function DashboardPage() {
                           onClick={() => handleBuyTemptation(item)}
                           disabled={!canPay}
                           className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                            canPay
+                            isBought
+                              ? "bg-slate-900 text-slate-500 border border-white/5 cursor-not-allowed"
+                              : canPay
                               ? usesSavings
                                 ? "bg-purple-600 hover:bg-purple-500 text-white shadow-md glow-purple"
                                 : "bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white shadow-md glow-amber"
@@ -1001,7 +1427,7 @@ export default function DashboardPage() {
                           }`}
                         >
                           <Sparkles className="w-3.5 h-3.5" />
-                          <span>{usesSavings ? "Comprar c/ Poupança" : "Comprar"}</span>
+                          <span>{isBought ? "Já Adquirido" : usesSavings ? "Comprar c/ Poupança" : "Comprar"}</span>
                         </button>
                       </div>
                     </div>
@@ -1013,24 +1439,50 @@ export default function DashboardPage() {
         </div>
       </main>
 
-      {/* Unforeseen Event Modal (Modal de Imprevisto - Appears automatically at Minute 3) */}
+      {/* Unforeseen Event Modal (With 30s Decision Timer & Flash Promo Option) */}
       {activeUnforeseen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="glass-panel max-w-lg w-full p-6 rounded-2xl border-2 border-rose-500/50 glow-rose bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl relative">
-            <div className="absolute top-4 right-4 p-2 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 animate-pulse">
-              <AlertTriangle className="w-6 h-6" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="glass-panel max-w-lg w-full p-6 rounded-2xl border-2 border-rose-500/50 glow-rose bg-gradient-to-b from-slate-900 to-slate-950 shadow-2xl relative space-y-4">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-extrabold uppercase tracking-wider">
+                <AlertTriangle className="w-4 h-4 text-rose-400" />
+                <span>⚡ Alerta de Imprevisto no Mês {currentMonth}</span>
+              </div>
+
+              {/* Countdown Timer Display */}
+              {modalCountdown !== null && (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono font-extrabold text-sm animate-pulse">
+                  <Timer className="w-4 h-4" />
+                  <span>{modalCountdown}s para decidir</span>
+                </div>
+              )}
             </div>
 
-            <div className="inline-block px-3 py-1 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 text-xs font-extrabold uppercase tracking-wider mb-3">
-              ⚡ Alerta de Imprevisto no Mês {currentMonth}
+            <div>
+              <h2 className="text-xl font-black text-white mb-1">{activeUnforeseen.title}</h2>
+              <p className="text-xs text-slate-300 leading-relaxed">{activeUnforeseen.description}</p>
             </div>
 
-            <h2 className="text-xl font-black text-white mb-2">{activeUnforeseen.title}</h2>
-            <p className="text-sm text-slate-300 mb-6 leading-relaxed">
-              {activeUnforeseen.description}
-            </p>
+            {/* Flash Promo Box inside Imprevisto */}
+            <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-purple-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+              <div>
+                <div className="flex items-center gap-1.5 text-amber-300 text-xs font-bold">
+                  <Zap className="w-4 h-4" />
+                  <span>Promoção Flash da Semana! (30% OFF)</span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  Combo Especial Lazer por R$ 130,00 (+50 pts de Felicidade).
+                </p>
+              </div>
+              <button
+                onClick={handleBuyFlashPromo}
+                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 transition-all shadow-md"
+              >
+                Aproveitar
+              </button>
+            </div>
 
-            <div className="grid grid-cols-2 gap-3 mb-6 p-3 rounded-xl bg-slate-900/60 border border-white/10 text-xs">
+            <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-900/60 border border-white/10 text-xs">
               <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
                 <span className="text-slate-400 block mb-1">Custo para Resolver:</span>
                 <strong className="text-emerald-400 text-base font-extrabold">
@@ -1041,7 +1493,7 @@ export default function DashboardPage() {
                 </span>
               </div>
               <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20">
-                <span className="text-slate-400 block mb-1">Se Recusar/Ignorar:</span>
+                <span className="text-slate-400 block mb-1">Se Recusar / Tempo Esgotar:</span>
                 <strong className="text-rose-400 text-base font-extrabold">
                   -{activeUnforeseen.penaltyIfNotFixedPoints} Pontos
                 </strong>
@@ -1049,7 +1501,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
               {(() => {
                 const totalFunds = balance + savings;
                 const canPay = totalFunds >= activeUnforeseen.costToFix;

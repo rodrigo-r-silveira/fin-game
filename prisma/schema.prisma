@@ -20,8 +20,9 @@ model Group {
   name             String
   balance          Float         @default(0.0) // Saldo no mês atual
   savings          Float         @default(0.0) // Saldo acumulado na poupança
+  investments      Float         @default(0.0) // Saldo aplicado em investimentos fictícios
   happinessPoints  Int           @default(0)
-  currentMonth     Int           @default(1)
+  currentMonth     Int           @default(0)   // 0 = Mês 0 (RPG), 1-6 = Meses de jogo
   isStarted        Boolean       @default(false)
   isGameFinished   Boolean       @default(false)
   createdAt        DateTime      @default(now())
@@ -37,6 +38,7 @@ model ExpenseOption {
   type             ExpenseType
   category         String?     // ex: "Moradia", "Lazer", "Transporte"
   description      String?
+  isRPGChoice      Boolean     @default(false)
 }
 
 model UnforeseenEvent {
