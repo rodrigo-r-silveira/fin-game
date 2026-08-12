@@ -76,6 +76,24 @@ export default function AdminCatalogPage() {
     }
   };
 
+  // Reset catalog to initial code defaults
+  const handleResetCatalog = async () => {
+    if (!confirm("Tem certeza que deseja restaurar todas as despesas e opções para os valores padrão do código?")) return;
+    try {
+      setLoading(true);
+      const res = await fetch("/api/catalog?reset=true");
+      const data = await res.json();
+      if (data.success && Array.isArray(data.expenses)) {
+        setItems(data.expenses);
+        setNotification("Catálogo restaurado para os valores padrão com sucesso!");
+      }
+    } catch (err) {
+      alert("Erro ao restaurar catálogo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (authChecked) {
       fetchCatalog();
@@ -202,9 +220,20 @@ export default function AdminCatalogPage() {
           <span>Voltar ao Painel</span>
         </Link>
 
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-bold">
-          <ShieldCheck className="w-4 h-4 text-purple-400" />
-          <span>Gestor de Catálogo & Mês 0 (RPG)</span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleResetCatalog}
+            className="px-3.5 py-1.5 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 border border-purple-500/40 text-purple-200 font-bold text-xs transition-all flex items-center gap-1.5"
+            title="Restaurar todas as despesas e opções para os valores padrão do código"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-300" />
+            <span>Restaurar Padrões do Código</span>
+          </button>
+
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-300 text-xs font-bold">
+            <ShieldCheck className="w-4 h-4 text-purple-400" />
+            <span>Gestor de Catálogo & Mês 0 (RPG)</span>
+          </div>
         </div>
       </div>
 

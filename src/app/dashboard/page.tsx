@@ -917,11 +917,17 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">1. Moradia & Habitação</h3>
             </div>
             <div className="space-y-2">
-              {[
-                { title: "Quarto Compartilhado", cost: 500, points: 5, desc: "Custo baixo, pouca privacidade." },
-                { title: "Kitnet Própria", cost: 750, points: 10, desc: "Espaço independente e confortável." },
-                { title: "Apartamento Completo", cost: 1100, points: 20, desc: "Alto conforto, condomínio e infraestrutura." },
-              ].map((opt) => (
+              {(
+                catalogItems.filter((i) => i.isRPGChoice && i.category === "Moradia").length > 0
+                  ? catalogItems
+                      .filter((i) => i.isRPGChoice && i.category === "Moradia")
+                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                  : [
+                      { title: "Quarto Compartilhado", cost: 500, points: 5, desc: "Custo baixo, pouca privacidade." },
+                      { title: "Kitnet Própria", cost: 750, points: 10, desc: "Espaço independente e confortável." },
+                      { title: "Apartamento Completo", cost: 1100, points: 20, desc: "Alto conforto, condomínio e infraestrutura." },
+                    ]
+              ).map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, housing: opt }))}
@@ -951,11 +957,17 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">2. Alimentação & Gastronomia</h3>
             </div>
             <div className="space-y-2">
-              {[
-                { title: "Marmita & Básico", cost: 350, points: 5, desc: "Refeições essenciais preparadas em casa." },
-                { title: "Supermercado Completo", cost: 500, points: 10, desc: "Boa variedade de alimentos diários." },
-                { title: "Alimentação Gourmet", cost: 700, points: 20, desc: "Ingredientes nobres e delivery nos fins de semana." },
-              ].map((opt) => (
+              {(
+                catalogItems.filter((i) => i.isRPGChoice && i.category === "Alimentação").length > 0
+                  ? catalogItems
+                      .filter((i) => i.isRPGChoice && i.category === "Alimentação")
+                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                  : [
+                      { title: "Marmita & Básico", cost: 350, points: 5, desc: "Refeições essenciais preparadas em casa." },
+                      { title: "Supermercado Completo", cost: 500, points: 10, desc: "Boa variedade de alimentos diários." },
+                      { title: "Alimentação Gourmet", cost: 700, points: 20, desc: "Ingredientes nobres e delivery nos fins de semana." },
+                    ]
+              ).map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, food: opt }))}
@@ -985,10 +997,16 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">3. Transporte & Mobilidade</h3>
             </div>
             <div className="space-y-2">
-              {[
-                { title: "Transporte Público", cost: 120, points: 5, desc: "Ônibus e metrô no dia a dia." },
-                { title: "Passe Livre + Carona/App", cost: 200, points: 10, desc: "Agilidade extra para se locomover." },
-              ].map((opt) => (
+              {(
+                catalogItems.filter((i) => i.isRPGChoice && i.category === "Transporte").length > 0
+                  ? catalogItems
+                      .filter((i) => i.isRPGChoice && i.category === "Transporte")
+                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                  : [
+                      { title: "Transporte Público", cost: 120, points: 5, desc: "Ônibus e metrô no dia a dia." },
+                      { title: "Passe Livre + Carona/App", cost: 200, points: 10, desc: "Agilidade extra para se locomover." },
+                    ]
+              ).map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, transport: opt }))}
@@ -1018,10 +1036,16 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">4. Conectividade & Tecnologia</h3>
             </div>
             <div className="space-y-2">
-              {[
-                { title: "Internet Básica", cost: 90, points: 5, desc: "Navegação essencial para estudos." },
-                { title: "Fibra + Streamings VIP", cost: 150, points: 15, desc: "Conexão ultra-rápida e entretenimento." },
-              ].map((opt) => (
+              {(
+                catalogItems.filter((i) => i.isRPGChoice && i.category === "Tecnologia").length > 0
+                  ? catalogItems
+                      .filter((i) => i.isRPGChoice && i.category === "Tecnologia")
+                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                  : [
+                      { title: "Internet Básica", cost: 90, points: 5, desc: "Navegação essencial para estudos." },
+                      { title: "Fibra + Streamings VIP", cost: 150, points: 15, desc: "Conexão ultra-rápida e entretenimento." },
+                    ]
+              ).map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, tech: opt }))}

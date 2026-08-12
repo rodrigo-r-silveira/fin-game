@@ -187,16 +187,35 @@ const DEFAULT_CATALOG = [
   },
 ];
 
-// GET /api/catalog - List catalog items (seeds database if empty)
-export async function GET() {
+// GET /api/catalog - List catalog items (seeds database if empty or missing RPG items)
+export async function GET(req: Request) {
   try {
-    let count = await prisma.expenseOption.count();
+    const { searchParams } = new URL(req.url);
+    const forceReset = searchParams.get("reset") === "true";
 
-    // Auto-seed database if empty
-    if (count === 0) {
-      await prisma.expenseOption.createMany({
-        data: DEFAULT_CATALOG,
-      });
+    if (forceReset) {
+      await prisma.expenseOption.deleteMany({});
+    }
+
+    let count = await prisma.expenseOption.count();
+    let rpgCount = await prisma.expenseOption.count({ where: { isRPGChoice: true } });
+
+    // Auto-seed database if empty or missing default RPG options
+    if (count === 0 || rpgCount === 0) {
+      // Upsert default catalog items
+      for (const item of DEFAULT_CATALOG) {
+        const existing = await prisma.expenseOption.findFirst({
+          where: { title: item.title },
+        });
+        if (!existing) {
+          await prisma.expenseOption.create({ data: item });
+        } else if (!existing.isRPGChoice && item.isRPGChoice) {
+          await prisma.expenseOption.update({
+            where: { id: existing.id },
+            data: { isRPGChoice: true },
+          });
+        }
+      }
     }
 
     const expenses = await prisma.expenseOption.findMany({
