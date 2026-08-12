@@ -43,12 +43,13 @@ model ExpenseOption {
 }
 
 model UnforeseenEvent {
-  id                      String  @id @default(uuid())
-  title                   String  // ex: "Celular Quebrou"
+  id                      String   @id @default(uuid())
+  title                   String   // ex: "Celular Quebrou"
   description             String
   costToFix               Float
-  penaltyIfNotFixedPoints Int     // ex: 30 pontos perdidos se recusar
-  restoredPointsIfFixed   Int     // ex: recupera ou ganha pontos ao arrumar
+  penaltyIfNotFixedPoints Int      // ex: 30 pontos perdidos se recusar
+  restoredPointsIfFixed   Int      // ex: recupera ou ganha pontos ao arrumar
+  createdAt               DateTime @default(now())
 }
 
 model Transaction {

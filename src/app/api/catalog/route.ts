@@ -187,7 +187,53 @@ const DEFAULT_CATALOG = [
   },
 ];
 
-// GET /api/catalog - List catalog items (seeds database if empty or missing RPG items)
+// Default Initial 6 Unforeseen Events (Mensagens Relâmpago)
+const DEFAULT_UNFORESEEN = [
+  {
+    title: "📱 Tela do Celular Quebrou!",
+    description: "Seu celular caiu no chão. O reparo imediato evita transtornos nos estudos e no trabalho.",
+    costToFix: 260.0,
+    penaltyIfNotFixedPoints: 40,
+    restoredPointsIfFixed: 10,
+  },
+  {
+    title: "🦷 Emergência Odontológica",
+    description: "Dor de dente aguda no meio da semana! Precisa de consulta e remédios de urgência.",
+    costToFix: 220.0,
+    penaltyIfNotFixedPoints: 35,
+    restoredPointsIfFixed: 5,
+  },
+  {
+    title: "💻 Manutenção do Notebook da Faculdade",
+    description: "O computador travou antes da entrega do projeto final. Reparo urgente necessário.",
+    costToFix: 310.0,
+    penaltyIfNotFixedPoints: 50,
+    restoredPointsIfFixed: 15,
+  },
+  {
+    title: "🚗 Manutenção Urgente no Veículo",
+    description: "Pneu furado e alinhamento necessário para continuar se deslocando com segurança.",
+    costToFix: 280.0,
+    penaltyIfNotFixedPoints: 45,
+    restoredPointsIfFixed: 10,
+  },
+  {
+    title: "⚡ Multa por Conta de Luz Atrasada",
+    description: "Atraso no pagamento da energia gerou taxa de religação e juros de mora.",
+    costToFix: 190.0,
+    penaltyIfNotFixedPoints: 30,
+    restoredPointsIfFixed: 5,
+  },
+  {
+    title: "👟 Tênis do Dia a Dia Rasgou",
+    description: "O calçado principal estragou na chuva. Necessário comprar um par substituto urgente.",
+    costToFix: 170.0,
+    penaltyIfNotFixedPoints: 25,
+    restoredPointsIfFixed: 5,
+  },
+];
+
+// GET /api/catalog - List catalog items & unforeseen events
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
@@ -195,14 +241,15 @@ export async function GET(req: Request) {
 
     if (forceReset) {
       await prisma.expenseOption.deleteMany({});
+      await prisma.unforeseenEvent.deleteMany({});
     }
 
     let count = await prisma.expenseOption.count();
     let rpgCount = await prisma.expenseOption.count({ where: { isRPGChoice: true } });
+    let uCount = await prisma.unforeseenEvent.count();
 
-    // Auto-seed database if empty or missing default RPG options
+    // Auto-seed ExpenseOption if empty
     if (count === 0 || rpgCount === 0) {
-      // Upsert default catalog items
       for (const item of DEFAULT_CATALOG) {
         const existing = await prisma.expenseOption.findFirst({
           where: { title: item.title },
@@ -218,11 +265,23 @@ export async function GET(req: Request) {
       }
     }
 
+    // Auto-seed UnforeseenEvent if empty
+    if (uCount === 0) {
+      for (const uItem of DEFAULT_UNFORESEEN) {
+        const existing = await prisma.unforeseenEvent.findFirst({
+          where: { title: uItem.title },
+        });
+        if (!existing) {
+          await prisma.unforeseenEvent.create({ data: uItem });
+        }
+      }
+    }
+
     const expenses = await prisma.expenseOption.findMany({
       orderBy: { title: "asc" },
     });
     const unforeseen = await prisma.unforeseenEvent.findMany({
-      orderBy: { title: "asc" },
+      orderBy: { createdAt: "asc" },
     });
 
     return NextResponse.json({ success: true, expenses, unforeseen });
@@ -234,12 +293,35 @@ export async function GET(req: Request) {
   }
 }
 
-// POST /api/catalog - Create new catalog expense or option
+// POST /api/catalog - Create new catalog expense or unforeseen event
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { title, cost, happinessPoints, type, category, description, isRPGChoice } = body;
+    const { targetTable, title, cost, happinessPoints, type, category, description, isRPGChoice, costToFix, penaltyIfNotFixedPoints, restoredPointsIfFixed } = body;
 
+    // Handle Unforeseen Event creation
+    if (targetTable === "UNFORESEEN" || type === "UNFORESEEN") {
+      if (!title || costToFix === undefined || penaltyIfNotFixedPoints === undefined) {
+        return NextResponse.json(
+          { success: false, error: "Título, custo de reparo e penalidade são obrigatórios." },
+          { status: 400 }
+        );
+      }
+
+      const newUnforeseen = await prisma.unforeseenEvent.create({
+        data: {
+          title: title.trim(),
+          description: description?.trim() || "",
+          costToFix: Number(costToFix),
+          penaltyIfNotFixedPoints: Number(penaltyIfNotFixedPoints),
+          restoredPointsIfFixed: Number(restoredPointsIfFixed || 0),
+        },
+      });
+
+      return NextResponse.json({ success: true, item: newUnforeseen, targetTable: "UNFORESEEN" });
+    }
+
+    // Handle Expense Option creation
     if (!title || cost === undefined || happinessPoints === undefined || !type) {
       return NextResponse.json(
         { success: false, error: "Título, custo, pontos e tipo são obrigatórios." },
@@ -268,17 +350,32 @@ export async function POST(req: Request) {
   }
 }
 
-// PUT /api/catalog - Update existing item
+// PUT /api/catalog - Update existing item or unforeseen event
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, title, cost, happinessPoints, type, category, description, isRPGChoice } = body;
+    const { id, targetTable, title, cost, happinessPoints, type, category, description, isRPGChoice, costToFix, penaltyIfNotFixedPoints, restoredPointsIfFixed } = body;
 
     if (!id) {
       return NextResponse.json(
         { success: false, error: "ID do item é obrigatório." },
         { status: 400 }
       );
+    }
+
+    if (targetTable === "UNFORESEEN" || type === "UNFORESEEN") {
+      const updatedUnforeseen = await prisma.unforeseenEvent.update({
+        where: { id },
+        data: {
+          ...(title && { title: title.trim() }),
+          ...(description !== undefined && { description: description.trim() }),
+          ...(costToFix !== undefined && { costToFix: Number(costToFix) }),
+          ...(penaltyIfNotFixedPoints !== undefined && { penaltyIfNotFixedPoints: Number(penaltyIfNotFixedPoints) }),
+          ...(restoredPointsIfFixed !== undefined && { restoredPointsIfFixed: Number(restoredPointsIfFixed) }),
+        },
+      });
+
+      return NextResponse.json({ success: true, item: updatedUnforeseen, targetTable: "UNFORESEEN" });
     }
 
     const updatedItem = await prisma.expenseOption.update({
@@ -303,11 +400,12 @@ export async function PUT(req: Request) {
   }
 }
 
-// DELETE /api/catalog - Delete item by ID
+// DELETE /api/catalog - Delete item or unforeseen event by ID
 export async function DELETE(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");
+    const targetTable = searchParams.get("targetTable");
 
     if (!id) {
       return NextResponse.json(
@@ -316,7 +414,11 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await prisma.expenseOption.delete({ where: { id } });
+    if (targetTable === "UNFORESEEN") {
+      await prisma.unforeseenEvent.delete({ where: { id } });
+    } else {
+      await prisma.expenseOption.delete({ where: { id } });
+    }
 
     return NextResponse.json({ success: true, message: "Item excluído com sucesso." });
   } catch (error: any) {

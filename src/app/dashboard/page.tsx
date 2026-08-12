@@ -84,16 +84,18 @@ export default function DashboardPage() {
     tech?: { title: string; cost: number; points: number };
   }>({});
 
-  // Dynamic Catalog Options loaded from Admin Catalog API (/api/catalog)
+  // Dynamic Catalog Options & Unforeseen Events loaded from API (/api/catalog)
   const [catalogItems, setCatalogItems] = useState<any[]>([]);
+  const [catalogUnforeseens, setCatalogUnforeseens] = useState<any[]>([]);
 
-  // Load Catalog Items from /api/catalog
+  // Load Catalog Items & Unforeseen Events from /api/catalog
   useEffect(() => {
     fetch("/api/catalog")
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.expenses)) {
-          setCatalogItems(data.expenses);
+        if (data.success) {
+          if (Array.isArray(data.expenses)) setCatalogItems(data.expenses);
+          if (Array.isArray(data.unforeseen)) setCatalogUnforeseens(data.unforeseen);
         }
       })
       .catch(() => {});
@@ -362,11 +364,11 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [modalCountdown, activeUnforeseen]);
 
-  // Trigger Imprevisto at random time between 2 to 3 minutes
+  // Trigger Imprevisto at random time between 2 to 3 minutes (Shuffled per group)
   const triggerUnforeseenEvent = () => {
-    const events: UnforeseenEvent[] = [
+    const fallbackEvents: UnforeseenEvent[] = [
       {
-        id: `u-${currentMonth}-1`,
+        id: `u-1`,
         title: "📱 Tela do Celular Quebrou!",
         description: "Seu celular caiu no chão. O reparo imediato evita transtornos nos estudos e trabalho.",
         costToFix: 260.0,
@@ -375,7 +377,7 @@ export default function DashboardPage() {
         triggeredMonth: currentMonth,
       },
       {
-        id: `u-${currentMonth}-2`,
+        id: `u-2`,
         title: "🦷 Emergência Odontológica",
         description: "Consulta de dor de dente urgente no meio do mês! Precisa de medicação imediata.",
         costToFix: 220.0,
@@ -384,7 +386,7 @@ export default function DashboardPage() {
         triggeredMonth: currentMonth,
       },
       {
-        id: `u-${currentMonth}-3`,
+        id: `u-3`,
         title: "💻 Manutenção do Notebook da Faculdade",
         description: "Falha na memória RAM antes da entrega de um projeto importante.",
         costToFix: 310.0,
@@ -392,12 +394,67 @@ export default function DashboardPage() {
         restoredPointsIfFixed: 15,
         triggeredMonth: currentMonth,
       },
+      {
+        id: `u-4`,
+        title: "🚗 Manutenção Urgente no Veículo",
+        description: "Pneu furado e alinhamento necessário para continuar se deslocando com segurança.",
+        costToFix: 280.0,
+        penaltyIfNotFixedPoints: 45,
+        restoredPointsIfFixed: 10,
+        triggeredMonth: currentMonth,
+      },
+      {
+        id: `u-5`,
+        title: "⚡ Multa por Conta de Luz Atrasada",
+        description: "Atraso no pagamento da energia gerou taxa de religação e juros de mora.",
+        costToFix: 190.0,
+        penaltyIfNotFixedPoints: 30,
+        restoredPointsIfFixed: 5,
+        triggeredMonth: currentMonth,
+      },
+      {
+        id: `u-6`,
+        title: "👟 Tênis do Dia a Dia Rasgou",
+        description: "O calçado principal estragou na chuva. Necessário comprar um par substituto urgente.",
+        costToFix: 170.0,
+        penaltyIfNotFixedPoints: 25,
+        restoredPointsIfFixed: 5,
+        triggeredMonth: currentMonth,
+      },
     ];
 
-    const selected = events[(currentMonth - 1) % events.length];
+    const sourceEvents = catalogUnforeseens.length > 0
+      ? catalogUnforeseens.map((u) => ({
+          id: u.id,
+          title: u.title,
+          description: u.description,
+          costToFix: u.costToFix,
+          penaltyIfNotFixedPoints: u.penaltyIfNotFixedPoints,
+          restoredPointsIfFixed: u.restoredPointsIfFixed,
+          triggeredMonth: currentMonth,
+        }))
+      : fallbackEvents;
+
+    // Deterministic shuffle based on group token so every group gets all events in different order
+    const groupToken = (typeof window !== "undefined" && localStorage.getItem("finGame_groupToken")) || groupName;
+    let hash = 0;
+    for (let i = 0; i < groupToken.length; i++) {
+      hash = (hash << 5) - hash + groupToken.charCodeAt(i);
+      hash |= 0;
+    }
+
+    const shuffled = [...sourceEvents];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.abs((hash + i * 17) % (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+
+    const selectedIndex = (currentMonth - 1) % shuffled.length;
+    const selected = shuffled[selectedIndex];
+
     if (!resolvedUnforeseens.includes(selected.id)) {
       setActiveUnforeseen(selected);
-      setModalCountdown(30); // Start 30s countdown inside modal
+      setModalCountdown(30); // 30s decision countdown
     }
   };
 
@@ -1547,25 +1604,6 @@ export default function DashboardPage() {
             <div>
               <h2 className="text-xl font-black text-white mb-1">{activeUnforeseen.title}</h2>
               <p className="text-xs text-slate-300 leading-relaxed">{activeUnforeseen.description}</p>
-            </div>
-
-            {/* Flash Promo Box inside Imprevisto */}
-            <div className="p-3.5 rounded-xl bg-gradient-to-r from-amber-500/10 to-purple-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
-              <div>
-                <div className="flex items-center gap-1.5 text-amber-300 text-xs font-bold">
-                  <Zap className="w-4 h-4" />
-                  <span>Promoção Flash da Semana! (30% OFF)</span>
-                </div>
-                <p className="text-[11px] text-slate-300 mt-0.5">
-                  Combo Especial Lazer por R$ 130,00 (+50 pts de Felicidade).
-                </p>
-              </div>
-              <button
-                onClick={handleBuyFlashPromo}
-                className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shrink-0 transition-all shadow-md"
-              >
-                Aproveitar
-              </button>
             </div>
 
             <div className="grid grid-cols-2 gap-3 p-3 rounded-xl bg-slate-900/60 border border-white/10 text-xs">
