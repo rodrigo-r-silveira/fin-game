@@ -80,6 +80,9 @@ export default function DashboardPage() {
   const [unforeseenTriggerTime, setUnforeseenTriggerTime] = useState<number>(150);
   const [modalCountdown, setModalCountdown] = useState<number | null>(null);
 
+  // Server-side monthStartedAt timestamp for immutable, synchronized timer ticking
+  const [serverMonthStartedAt, setServerMonthStartedAt] = useState<string | null>(null);
+
   // Interactive Modals state (Deposit to Savings, Withdraw from Savings, Invest)
   const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
   const [showWithdrawModal, setShowWithdrawModal] = useState<boolean>(false);
@@ -156,6 +159,8 @@ export default function DashboardPage() {
 
                 // Global Timer Sync using server timestamp
                 if (matched.monthStartedAt) {
+                  const mStr = new Date(matched.monthStartedAt).toISOString();
+                  setServerMonthStartedAt((prev) => (prev !== mStr ? mStr : prev));
                   const elapsedSecs = Math.floor((Date.now() - new Date(matched.monthStartedAt).getTime()) / 1000);
                   const remaining = Math.max(0, MONTH_DURATION_SECONDS - elapsedSecs);
                   setTimeLeft(remaining);
@@ -357,28 +362,30 @@ export default function DashboardPage() {
     }
   }, [currentMonth]);
 
-  // Real-time month timer tick
+  // Real-time month timer tick (Calculated strictly from server timestamp to prevent resets on actions)
   useEffect(() => {
     if (currentMonth === 0) return; // Month 0 (RPG Setup) has no auto-advancing timer
 
     const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handleMonthEnd();
-          return MONTH_DURATION_SECONDS;
-        }
+      if (serverMonthStartedAt) {
+        const elapsedSecs = Math.floor((Date.now() - new Date(serverMonthStartedAt).getTime()) / 1000);
+        const remaining = Math.max(0, MONTH_DURATION_SECONDS - elapsedSecs);
+        setTimeLeft(remaining);
 
         // Trigger Imprevisto at random time (between 120s and 180s remaining)
-        if (prev === unforeseenTriggerTime && !activeUnforeseen) {
+        if (remaining === unforeseenTriggerTime && !activeUnforeseen) {
           triggerUnforeseenEvent();
         }
 
-        return prev - 1;
-      });
+        // Auto-advance month when 5 minutes expire
+        if (remaining <= 0) {
+          handleMonthEnd();
+        }
+      }
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentMonth, fixedExpenses, balance, savings, unforeseenTriggerTime, activeUnforeseen]);
+  }, [currentMonth, serverMonthStartedAt, unforeseenTriggerTime, activeUnforeseen]);
 
   // Active Unforeseen Modal Countdown Effect (30 seconds to answer)
   useEffect(() => {
