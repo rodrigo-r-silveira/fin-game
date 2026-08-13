@@ -32,15 +32,15 @@ export async function POST(req: Request) {
     const trimmedName = name.trim();
     const token = `GRUPO-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-    // Create group with initial balance R$ 2500 and 100 happiness points
+    // Create group with initial balance R$ 1560.0 and 100 happiness points (Starts on Mês 0 RPG)
     const newGroup = await prisma.group.create({
       data: {
         name: trimmedName,
         qrCodeToken: token,
-        balance: 2500.0,
+        balance: 1560.0,
         savings: 0.0,
         happinessPoints: 100,
-        currentMonth: 1,
+        currentMonth: 0,
       },
     });
 

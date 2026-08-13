@@ -68,20 +68,20 @@ export default function RegisterGroupPage() {
               <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
                 Dinâmica de Estagiários
               </span>
-              <h1 className="text-2xl font-black text-white tracking-tight">Cadastrar Grupo</h1>
+              <h1 className="text-2xl font-black text-white tracking-tight">Personagem</h1>
               <p className="text-xs text-slate-400">
-                Digite o nome da sua equipe para entrar no jogo e receber a Bolsa Auxílio inicial!
+                Parabens! Você foi aprovado no programa de estágio do SEBRAE/MS 2026! Digite o nome do seu personagem para começar a jornada.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 pt-2">
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1.5">
-                  Nome do Grupo / Integrantes:
+                  Nome do Personagem:
                 </label>
                 <input
                   type="text"
-                  placeholder="Ex: Grupo 01 - Tech Innovators"
+                  placeholder="Digite o nome do seu personagem"
                   value={groupName}
                   onChange={(e) => {
                     setGroupName(e.target.value);
@@ -101,7 +101,7 @@ export default function RegisterGroupPage() {
                   <Wallet className="w-4 h-4" />
                   <span>Benefício de Início:</span>
                 </div>
-                <p>• Bolsa Auxílio Mensal: <strong>R$ 2.500,00</strong></p>
+                <p>• Bolsa Auxílio Mensal: <strong>R$ 1.560,00</strong></p>
                 <p>• Pontos de Felicidade Iniciais: <strong>100 pts</strong></p>
               </div>
 
@@ -118,7 +118,7 @@ export default function RegisterGroupPage() {
                 ) : (
                   <>
                     <ShieldCheck className="w-5 h-5" />
-                    <span>Confirmar Cadastro do Grupo</span>
+                    <span>Confirmar Cadastro do Personagem</span>
                   </>
                 )}
               </button>
@@ -132,7 +132,7 @@ export default function RegisterGroupPage() {
 
             <div>
               <span className="text-xs text-emerald-400 font-bold uppercase tracking-wider">
-                Grupo Cadastrado com Sucesso!
+                Personagem Cadastrado com Sucesso!
               </span>
               <h2 className="text-2xl font-black text-white mt-1">{createdGroup.name}</h2>
               <p className="text-xs text-slate-400 mt-2">
@@ -141,14 +141,14 @@ export default function RegisterGroupPage() {
             </div>
 
             <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-xs text-emerald-200">
-              Seu grupo já apareceu na tela do facilitador! Aguarde o início da rodada ou acesse sua Dashboard.
+              Seu personagem já apareceu na tela do facilitador! Aguarde o início da rodada ou acesse sua Dashboard.
             </div>
 
             <button
               onClick={handleGoToDashboard}
               className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-sm shadow-xl glow-emerald transition-all flex items-center justify-center gap-2"
             >
-              <span>Ir para a Dashboard do Grupo</span>
+              <span>Ir para a Dashboard do Personagem</span>
               <ArrowRight className="w-5 h-5" />
             </button>
           </div>

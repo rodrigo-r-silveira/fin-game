@@ -8,6 +8,7 @@ export async function POST() {
       data: {
         isStarted: true,
         monthStartedAt: new Date(),
+        currentMonth: 0,
       },
     });
 

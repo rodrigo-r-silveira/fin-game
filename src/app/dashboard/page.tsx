@@ -101,15 +101,18 @@ export default function DashboardPage() {
       .catch(() => {});
   }, []);
 
-  // Load group info from URL query parameter or localStorage (Robust Recovery)
+  const [lastRemoteTriggerTime, setLastRemoteTriggerTime] = useState<string | null>(null);
+
+  // Load group info & Poll remote actions (Month advance & Admin triggers)
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window === "undefined") return;
+
+    const syncWithServer = () => {
       const params = new URLSearchParams(window.location.search);
       const token = params.get("token") || localStorage.getItem("finGame_groupToken");
       const savedName = localStorage.getItem("finGame_groupName");
 
       if (token) {
-        // Save token to localStorage so user never loses access on refresh
         localStorage.setItem("finGame_groupToken", token);
 
         fetch(`/api/groups`)
@@ -126,14 +129,27 @@ export default function DashboardPage() {
                 setBalance(matched.balance > 0 ? matched.balance : MONTHLY_ALLOWANCE);
                 setSavings(matched.savings);
                 if (matched.investments) setInvestedCapital(matched.investments);
-                if (matched.currentMonth !== undefined) setCurrentMonth(matched.currentMonth);
                 if (matched.happinessPoints) setHappinessPoints(matched.happinessPoints);
+
+                // Remote Month Advance by Admin
+                if (matched.currentMonth !== undefined && matched.currentMonth !== currentMonth) {
+                  setCurrentMonth(matched.currentMonth);
+                }
 
                 // Global Timer Sync using server timestamp
                 if (matched.monthStartedAt) {
                   const elapsedSecs = Math.floor((Date.now() - new Date(matched.monthStartedAt).getTime()) / 1000);
                   const remaining = Math.max(0, MONTH_DURATION_SECONDS - elapsedSecs);
                   setTimeLeft(remaining);
+                }
+
+                // Remote Unforeseen Trigger by Admin
+                if (matched.unforeseenTriggeredAt) {
+                  const triggeredTimeStr = new Date(matched.unforeseenTriggeredAt).toISOString();
+                  if (lastRemoteTriggerTime !== triggeredTimeStr) {
+                    setLastRemoteTriggerTime(triggeredTimeStr);
+                    triggerUnforeseenEvent();
+                  }
                 }
 
                 // Recover local fixed expenses if saved
@@ -158,8 +174,12 @@ export default function DashboardPage() {
       } else if (savedName) {
         setGroupName(savedName);
       }
-    }
-  }, [router]);
+    };
+
+    syncWithServer();
+    const interval = setInterval(syncWithServer, 3000);
+    return () => clearInterval(interval);
+  }, [router, currentMonth, lastRemoteTriggerTime]);
 
   // Dynamic fixed expenses list
   const [fixedExpenses, setFixedExpenses] = useState<ExpenseItem[]>([

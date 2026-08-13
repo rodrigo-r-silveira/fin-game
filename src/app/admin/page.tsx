@@ -202,15 +202,52 @@ export default function AdminPage() {
     };
   }, [authChecked]);
 
-  const handleNextMonth = () => {
-    if (currentMonth < 6) {
-      setCurrentMonth((prev) => prev + 1);
-      setLastAction(`⏩ Mês avançado para Mês ${currentMonth + 1}.`);
+  // Live timer tick for admin control panel based on server timestamp
+  const [timeLeft, setTimeLeft] = useState<number>(300);
+
+  useEffect(() => {
+    if (!gameStarted || groups.length === 0) return;
+    const firstWithTime = groups.find((g: any) => (g as any).monthStartedAt);
+    if (!firstWithTime || !(firstWithTime as any).monthStartedAt) return;
+
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - new Date((firstWithTime as any).monthStartedAt).getTime()) / 1000);
+      setTimeLeft(Math.max(0, 300 - elapsed));
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [gameStarted, groups]);
+
+  // Advance month for all active groups in DB
+  const handleNextMonth = async () => {
+    try {
+      const res = await fetch("/api/groups/advance", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setCurrentMonth(data.currentMonth);
+        fetchGroups();
+        setLastAction(`⏩ Mês avançado no banco de dados para Mês ${data.currentMonth}! Todos os cronômetros e participantes foram atualizados.`);
+      } else {
+        alert(`Erro ao avançar mês: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão ao avançar mês.");
     }
   };
 
-  const handleTriggerImprevisto = () => {
-    setLastAction(`⚡ Imprevisto disparado para todos os ${groups.length} grupos cadastrados!`);
+  // Remotely trigger imprevisto for all groups in DB
+  const handleTriggerImprevisto = async () => {
+    try {
+      const res = await fetch("/api/groups/trigger-unforeseen", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        setLastAction(`⚡ Imprevisto disparado com sucesso no servidor para todos os ${groups.length} grupos!`);
+      } else {
+        alert(`Erro ao disparar imprevisto: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão ao disparar imprevisto.");
+    }
   };
 
   const copyRegistrationUrl = () => {
@@ -368,6 +405,19 @@ export default function AdminPage() {
                 {gameStarted ? `Em Andamento (Mês ${currentMonth})` : "Aguardando Cadastro na Sala de Espera"}
               </span>
             </div>
+
+            {/* Live Month Countdown Bar for Facilitator */}
+            {gameStarted && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-amber-300 font-bold text-xs">
+                  <Zap className="w-4 h-4 text-amber-400 animate-pulse" />
+                  <span>Cronômetro Global do Mês {currentMonth} (Sincronizado):</span>
+                </div>
+                <div className="px-3 py-1 rounded-lg bg-amber-950/80 border border-amber-500/50 font-mono font-extrabold text-sm text-amber-300">
+                  {`${Math.floor(timeLeft / 60).toString().padStart(2, "0")}:${(timeLeft % 60).toString().padStart(2, "0")}`}
+                </div>
+              </div>
+            )}
 
             {lastAction && (
               <div className="p-3 rounded-xl bg-emerald-950/70 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-2">
