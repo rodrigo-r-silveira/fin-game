@@ -150,8 +150,9 @@ export default function DashboardPage() {
                 if (matched.isRPGConfirmed !== undefined) setIsRPGConfirmed(matched.isRPGConfirmed);
 
                 // Remote Month Advance by Admin
-                if (matched.currentMonth !== undefined && matched.currentMonth !== currentMonth) {
-                  if (matched.currentMonth > currentMonth && currentMonth >= 0) {
+                const curM = currentMonthRef.current;
+                if (matched.currentMonth !== undefined && matched.currentMonth !== curM) {
+                  if (matched.currentMonth > curM && curM >= 0) {
                     handleMonthTransition(matched.currentMonth);
                   } else {
                     setCurrentMonth(matched.currentMonth);
@@ -257,6 +258,9 @@ export default function DashboardPage() {
   ]);
 
   // Fresh refs to prevent stale closure issues in asynchronous callbacks (such as handleMonthEnd)
+  const currentMonthRef = useRef(currentMonth);
+  currentMonthRef.current = currentMonth;
+
   const balanceRef = useRef(balance);
   balanceRef.current = balance;
 
@@ -732,7 +736,9 @@ export default function DashboardPage() {
 
   // Turn of month logic (with 8% interest & 1.5 power exponential penalty)
   const handleMonthTransition = (targetMonthInput?: number) => {
-    const nextMonth = targetMonthInput !== undefined ? targetMonthInput : currentMonth + 1;
+    const curM = currentMonthRef.current;
+    const nextMonth = targetMonthInput !== undefined ? targetMonthInput : curM + 1;
+    const isFromMonthZero = curM === 0;
 
     const curFixed = fixedExpensesRef.current;
     const curBalance = balanceRef.current;
@@ -741,41 +747,51 @@ export default function DashboardPage() {
     const curChosenBase = chosenBaseExpensesRef.current;
     const curInvested = investedCapitalRef.current;
 
-    const unpaidFixed = curFixed.filter((e) => !e.isPaid);
+    let carriedOverExpenses: ExpenseItem[] = [];
     let totalPenalty = 0;
 
-    // Carried over unpaid expenses with +8% interest and incremented consecutive unpaid count
-    const carriedOverExpenses: ExpenseItem[] = unpaidFixed.map((e, idx) => {
-      const prevConsecutive = e.consecutiveMonths || 1;
-      const nextConsecutive = prevConsecutive + 1;
+    if (!isFromMonthZero) {
+      const unpaidFixed = curFixed.filter((e) => !e.isPaid);
 
-      // Exponential penalty formula: 50 * (mesesAtrasados)^1.5
-      const penaltyForThis = Math.round(50 * Math.pow(prevConsecutive, 1.5));
-      totalPenalty += penaltyForThis;
+      // Carried over unpaid expenses with +8% interest and incremented consecutive unpaid count
+      carriedOverExpenses = unpaidFixed.map((e, idx) => {
+        const prevConsecutive = e.consecutiveMonths || 1;
+        const nextConsecutive = prevConsecutive + 1;
 
-      const newCost = Math.round(e.cost * 1.08 * 100) / 100;
-      const titleClean = e.title.includes("⚠️ Atrasado")
-        ? e.title.replace(/\(Atrasado \d+ mes\(es\).*\)/, `(Atrasado ${nextConsecutive} mes(es) | +8% Juros)`)
-        : `${e.title} ⚠️ (Atrasado ${nextConsecutive} mes(es) | +8% Juros)`;
+        // Exponential penalty formula: 50 * (mesesAtrasados)^1.5
+        const penaltyForThis = Math.round(50 * Math.pow(prevConsecutive, 1.5));
+        totalPenalty += penaltyForThis;
 
-      return {
-        ...e,
-        id: `overdue-${nextMonth}-${idx}-${Date.now()}`,
-        title: titleClean,
-        cost: newCost,
-        isPaid: false,
-        consecutiveMonths: nextConsecutive,
-        description: `Despesa não paga por ${prevConsecutive} mês(es). Inclui 8% de juros e penalidade exponencial ^1.5.`,
-      };
-    });
+        const newCost = Math.round(e.cost * 1.08 * 100) / 100;
+        const titleClean = e.title.includes("⚠️ Atrasado")
+          ? e.title.replace(/\(Atrasado \d+ mes\(es\).*\)/, `(Atrasado ${nextConsecutive} mes(es) | +8% Juros)`)
+          : `${e.title} ⚠️ (Atrasado ${nextConsecutive} mes(es) | +8% Juros)`;
 
-    const newPoints = unpaidFixed.length > 0 ? Math.max(0, curPoints - totalPenalty) : curPoints;
+        return {
+          ...e,
+          id: `overdue-${nextMonth}-${idx}-${Date.now()}`,
+          title: titleClean,
+          cost: newCost,
+          isPaid: false,
+          consecutiveMonths: nextConsecutive,
+          description: `Despesa não paga por ${prevConsecutive} mês(es). Inclui 8% de juros e penalidade exponencial ^1.5.`,
+        };
+      });
+    }
+
+    const hasUnpaidInRegularMonth = !isFromMonthZero && curFixed.filter((e) => !e.isPaid).length > 0;
+    const newPoints = hasUnpaidInRegularMonth ? Math.max(0, curPoints - totalPenalty) : curPoints;
     setHappinessPoints(newPoints);
 
-    if (unpaidFixed.length > 0) {
+    if (hasUnpaidInRegularMonth) {
       setNotification({
-        message: `Entrando no Mês ${nextMonth}: Penalidade de -${totalPenalty} pts de Felicidade! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros!`,
+        message: `Entrando no Mês ${nextMonth}: Penalidade de -${totalPenalty} pts de Felicidade! ${curFixed.filter((e) => !e.isPaid).length} despesa(s) não paga(s) acumularam +8% de juros!`,
         type: "error",
+      });
+    } else if (isFromMonthZero) {
+      setNotification({
+        message: `🚀 Mês 1 Iniciado! Suas escolhas do Mês 0 foram carregadas como despesas do mês.`,
+        type: "success",
       });
     } else {
       setNotification({
@@ -786,14 +802,14 @@ export default function DashboardPage() {
 
     // Apply 2% monthly yield to Invested Capital (CDB Fictício)
     let updatedInvested = curInvested;
-    if (curInvested > 0) {
+    if (curInvested > 0 && !isFromMonthZero) {
       updatedInvested = Math.round(curInvested * 1.02 * 100) / 100;
       setInvestedCapital(updatedInvested);
     }
 
-    // Auto-transfer remaining balance to savings
-    const remainingBalance = Math.max(0, curBalance);
-    const newSavings = curSavings + remainingBalance;
+    // Auto-transfer remaining balance to savings ONLY for Month 1+ transitions
+    const remainingBalance = isFromMonthZero ? 0 : Math.max(0, curBalance);
+    const newSavings = isFromMonthZero ? 0.0 : curSavings + remainingBalance;
     const newBalance = MONTHLY_ALLOWANCE;
 
     setSavings(newSavings);
