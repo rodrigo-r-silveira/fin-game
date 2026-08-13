@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
   Heart,
@@ -262,54 +262,70 @@ export default function DashboardPage() {
     }
   }, [fixedExpenses]);
 
-  // Single-use temptations catalog
-  const [temptations] = useState<ExpenseItem[]>([
-    {
-      id: "t1",
-      title: "Ingresso de Show no Fim de Semana",
-      cost: 180.0,
-      happinessPoints: 45,
-      type: "TEMPTATION",
-      category: "Lazer",
-      description: "Shows imperdíveis com a galera no sábado à noite! (Uso único)",
-    },
-    {
-      id: "t2",
-      title: "Jantar Especial em Restaurante Chique",
-      cost: 140.0,
-      happinessPoints: 35,
-      type: "TEMPTATION",
-      category: "Gastronomia",
-      description: "Experiência culinária única para relaxar na sexta. (Uso único)",
-    },
-    {
-      id: "t3",
-      title: "Fone de Ouvido Noise Cancelling",
-      cost: 320.0,
-      happinessPoints: 70,
-      type: "TEMPTATION",
-      category: "Gadgets",
-      description: "Foco total nos estudos e música sem ruídos. (Uso único)",
-    },
-    {
-      id: "t4",
-      title: "Passeio de Bate-Volta na Praia",
-      cost: 120.0,
-      happinessPoints: 30,
-      type: "TEMPTATION",
-      category: "Viagem",
-      description: "Sol, mar e recarga de energias com os amigos. (Uso único)",
-    },
-    {
-      id: "t5",
-      title: "Assinatura VIP de Plataforma de Games",
-      cost: 65.0,
-      happinessPoints: 20,
-      type: "TEMPTATION",
-      category: "Entretenimento",
-      description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
-    },
-  ]);
+  // Dynamic single-use temptations catalog loaded directly from admin catalog (/api/catalog)
+  const temptations: ExpenseItem[] = useMemo(() => {
+    const adminTemptations = catalogItems.filter((i) => i.type === "TEMPTATION");
+    if (adminTemptations.length > 0) {
+      return adminTemptations.map((i) => ({
+        id: i.id,
+        title: i.title,
+        cost: i.cost,
+        happinessPoints: i.happinessPoints,
+        type: "TEMPTATION" as const,
+        category: i.category || "Lazer",
+        description: i.description || "Tentação de gasto cadastrada no catálogo administrativo.",
+      }));
+    }
+
+    // Fallback default temptations if catalog is empty
+    return [
+      {
+        id: "t1",
+        title: "Ingresso de Show no Fim de Semana",
+        cost: 180.0,
+        happinessPoints: 45,
+        type: "TEMPTATION",
+        category: "Lazer",
+        description: "Shows imperdíveis com a galera no sábado à noite! (Uso único)",
+      },
+      {
+        id: "t2",
+        title: "Jantar Especial em Restaurante Chique",
+        cost: 140.0,
+        happinessPoints: 35,
+        type: "TEMPTATION",
+        category: "Gastronomia",
+        description: "Experiência culinária única para relaxar na sexta. (Uso único)",
+      },
+      {
+        id: "t3",
+        title: "Fone de Ouvido Noise Cancelling",
+        cost: 320.0,
+        happinessPoints: 70,
+        type: "TEMPTATION",
+        category: "Gadgets",
+        description: "Foco total nos estudos e música sem ruídos. (Uso único)",
+      },
+      {
+        id: "t4",
+        title: "Passeio de Bate-Volta na Praia",
+        cost: 120.0,
+        happinessPoints: 30,
+        type: "TEMPTATION",
+        category: "Viagem",
+        description: "Sol, mar e recarga de energias com os amigos. (Uso único)",
+      },
+      {
+        id: "t5",
+        title: "Assinatura VIP de Plataforma de Games",
+        cost: 65.0,
+        happinessPoints: 20,
+        type: "TEMPTATION",
+        category: "Entretenimento",
+        description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
+      },
+    ];
+  }, [catalogItems]);
 
   const [longTermGoals, setLongTermGoals] = useState<ExpenseItem[]>([
     {
