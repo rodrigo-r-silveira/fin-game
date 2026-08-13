@@ -19,6 +19,7 @@ import {
   Search,
   Filter,
   X,
+  Award,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -49,7 +50,7 @@ export default function AdminCatalogPage() {
   const [loading, setLoading] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"RPG" | "FIXED" | "TEMPTATION" | "UNFORESEEN">("RPG");
+  const [activeTab, setActiveTab] = useState<"RPG" | "FIXED" | "TEMPTATION" | "UNFORESEEN" | "LONG_TERM_GOAL">("RPG");
 
   // Search & Category Filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -59,7 +60,7 @@ export default function AdminCatalogPage() {
   const [formTitle, setFormTitle] = useState("");
   const [formCost, setFormCost] = useState<number>(0);
   const [formPoints, setFormPoints] = useState<number>(10);
-  const [formType, setFormType] = useState<"FIXED" | "TEMPTATION">("FIXED");
+  const [formType, setFormType] = useState<"FIXED" | "TEMPTATION" | "LONG_TERM_GOAL">("FIXED");
   const [formCategory, setFormCategory] = useState("Moradia");
   const [formDescription, setFormDescription] = useState("");
   const [formIsRPG, setFormIsRPG] = useState(true);
@@ -200,7 +201,7 @@ export default function AdminCatalogPage() {
     setFormTitle(item.title);
     setFormCost(item.cost);
     setFormPoints(item.happinessPoints);
-    setFormType(item.type === "TEMPTATION" ? "TEMPTATION" : "FIXED");
+    setFormType(item.type === "UNFORESEEN" ? "FIXED" : item.type);
     setFormCategory(item.category || "Moradia");
     setFormDescription(item.description || "");
     setFormIsRPG(item.isRPGChoice);
@@ -260,6 +261,7 @@ export default function AdminCatalogPage() {
     if (activeTab === "RPG" && !item.isRPGChoice) return false;
     if (activeTab === "FIXED" && (item.type !== "FIXED" || item.isRPGChoice)) return false;
     if (activeTab === "TEMPTATION" && item.type !== "TEMPTATION") return false;
+    if (activeTab === "LONG_TERM_GOAL" && item.type !== "LONG_TERM_GOAL") return false;
 
     if (selectedCategory !== "ALL" && item.category !== selectedCategory) return false;
 
@@ -436,14 +438,15 @@ export default function AdminCatalogPage() {
                     <select
                       value={formType}
                       onChange={(e) => {
-                        const val = e.target.value as "FIXED" | "TEMPTATION";
+                        const val = e.target.value as "FIXED" | "TEMPTATION" | "LONG_TERM_GOAL";
                         setFormType(val);
-                        if (val === "TEMPTATION") setFormIsRPG(false);
+                        if (val !== "FIXED") setFormIsRPG(false);
                       }}
                       className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-white text-xs focus:outline-none focus:border-purple-500 font-medium"
                     >
                       <option value="FIXED">Despesa Fixa (Mandatória)</option>
                       <option value="TEMPTATION">Tentação (Opcional)</option>
+                      <option value="LONG_TERM_GOAL">Recompensa Final (Metas Mês 6)</option>
                     </select>
                   </div>
                   <div>
@@ -570,6 +573,23 @@ export default function AdminCatalogPage() {
             >
               <Zap className="w-3.5 h-3.5 text-amber-300" />
               <span>Mensagens Relâmpago</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setActiveTab("LONG_TERM_GOAL");
+                setFormType("LONG_TERM_GOAL");
+                setFormIsRPG(false);
+                resetForm();
+              }}
+              className={`flex-1 py-2 px-2 rounded-xl text-xs font-extrabold transition-all flex items-center justify-center gap-1.5 ${
+                activeTab === "LONG_TERM_GOAL"
+                  ? "bg-emerald-600 text-white shadow-md glow-emerald"
+                  : "text-slate-400 hover:text-white"
+              }`}
+            >
+              <Award className="w-3.5 h-3.5" />
+              <span>Recompensas Finais</span>
             </button>
           </div>
 

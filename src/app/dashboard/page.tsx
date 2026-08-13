@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Heart,
@@ -69,6 +69,7 @@ export default function DashboardPage() {
 
   // Single-use temptations tracking
   const [boughtTemptationIds, setBoughtTemptationIds] = useState<string[]>([]);
+  const [boughtGoalIds, setBoughtGoalIds] = useState<string[]>([]);
 
   // Month 0 RPG character confirmation state
   const [isRPGConfirmed, setIsRPGConfirmed] = useState<boolean>(false);
@@ -137,15 +138,11 @@ export default function DashboardPage() {
             if (data.success && Array.isArray(data.groups)) {
               const matched = data.groups.find((g: any) => g.qrCodeToken === token);
               if (matched) {
-                if (!matched.isStarted) {
-                  router.push(`/waiting-room?token=${token}`);
+                if (matched.isGameFinished) {
+                  router.push("/final-ranking");
                   return;
                 }
                 setGroupName(matched.name);
-                setBalance(matched.balance > 0 ? matched.balance : MONTHLY_ALLOWANCE);
-                setSavings(matched.savings);
-                if (matched.investments) setInvestedCapital(matched.investments);
-                if (matched.happinessPoints) setHappinessPoints(matched.happinessPoints);
                 if (matched.isRPGConfirmed !== undefined) setIsRPGConfirmed(matched.isRPGConfirmed);
 
                 // Remote Month Advance by Admin or Timer Expiration
@@ -154,6 +151,9 @@ export default function DashboardPage() {
                     handleMonthEnd();
                   } else {
                     setCurrentMonth(matched.currentMonth);
+                    setBalance(matched.balance);
+                    setSavings(matched.savings);
+                    if (matched.happinessPoints !== undefined) setHappinessPoints(matched.happinessPoints);
                   }
                 }
 
@@ -252,6 +252,25 @@ export default function DashboardPage() {
     },
   ]);
 
+  // Fresh refs to prevent stale closure issues in asynchronous callbacks (such as handleMonthEnd)
+  const balanceRef = useRef(balance);
+  balanceRef.current = balance;
+
+  const savingsRef = useRef(savings);
+  savingsRef.current = savings;
+
+  const fixedExpensesRef = useRef(fixedExpenses);
+  fixedExpensesRef.current = fixedExpenses;
+
+  const happinessPointsRef = useRef(happinessPoints);
+  happinessPointsRef.current = happinessPoints;
+
+  const chosenBaseExpensesRef = useRef(chosenBaseExpenses);
+  chosenBaseExpensesRef.current = chosenBaseExpenses;
+
+  const investedCapitalRef = useRef(investedCapital);
+  investedCapitalRef.current = investedCapital;
+
   // Persist fixedExpenses locally whenever changed
   useEffect(() => {
     if (typeof window !== "undefined" && fixedExpenses.length > 0) {
@@ -327,35 +346,52 @@ export default function DashboardPage() {
     ];
   }, [catalogItems]);
 
-  const [longTermGoals, setLongTermGoals] = useState<ExpenseItem[]>([
-    {
-      id: "g1",
-      title: "Viagem dos Sonhos (Mochilão Europa)",
-      cost: 3200.0,
-      happinessPoints: 300,
-      type: "LONG_TERM_GOAL",
-      category: "Sonho de Vida",
-      description: "A grande recompensa por economizar e manter foco total!",
-    },
-    {
-      id: "g2",
-      title: "Entrada do Carro Próprio",
-      cost: 2800.0,
-      happinessPoints: 250,
-      type: "LONG_TERM_GOAL",
-      category: "Patrimônio",
-      description: "Conquista da independência de locomoção com seu veículo.",
-    },
-    {
-      id: "g3",
-      title: "Reserva de Investimentos & Fundo de Emergência",
-      cost: 1800.0,
-      happinessPoints: 180,
-      type: "LONG_TERM_GOAL",
-      category: "Segurança Financeira",
-      description: "Tranquilidade absoluta para iniciar o próximo ciclo de vida.",
-    },
-  ]);
+  // Dynamic final month goals (Recompensas Finais) loaded directly from admin catalog (/api/catalog)
+  const longTermGoals: ExpenseItem[] = useMemo(() => {
+    const adminGoals = catalogItems.filter((i) => i.type === "LONG_TERM_GOAL");
+    if (adminGoals.length > 0) {
+      return adminGoals.map((i) => ({
+        id: i.id,
+        title: i.title,
+        cost: i.cost,
+        happinessPoints: i.happinessPoints,
+        type: "LONG_TERM_GOAL" as const,
+        category: i.category || "Recompensa Final",
+        description: i.description || "Recompensa final de grande impacto na felicidade.",
+      }));
+    }
+
+    // Fallback default goals if catalog is empty
+    return [
+      {
+        id: "g1",
+        title: "Viagem dos Sonhos (Mochilão Europa)",
+        cost: 3200.0,
+        happinessPoints: 300,
+        type: "LONG_TERM_GOAL",
+        category: "Recompensa Final",
+        description: "Incrível viagem com tudo pago para celebrar o fim da jornada com chave de ouro!",
+      },
+      {
+        id: "g2",
+        title: "Notebook Gamer / Workstation Pro",
+        cost: 2400.0,
+        happinessPoints: 220,
+        type: "LONG_TERM_GOAL",
+        category: "Recompensa Final",
+        description: "Equipamento de última geração para sua carreira profissional e lazer.",
+      },
+      {
+        id: "g3",
+        title: "Reserva de Emergência & Fundo de Liberdade",
+        cost: 1500.0,
+        happinessPoints: 150,
+        type: "LONG_TERM_GOAL",
+        category: "Recompensa Final",
+        description: "Tranquilidade absoluta e segurança financeira para o futuro.",
+      },
+    ];
+  }, [catalogItems]);
 
   // Unforeseen modal state
   const [activeUnforeseen, setActiveUnforeseen] = useState<UnforeseenEvent | null>(null);
@@ -658,7 +694,14 @@ export default function DashboardPage() {
 
   // Turn of month logic (with 8% interest & 1.5 power exponential penalty)
   const handleMonthEnd = () => {
-    const unpaidFixed = fixedExpenses.filter((e) => !e.isPaid);
+    const curFixed = fixedExpensesRef.current;
+    const curBalance = balanceRef.current;
+    const curSavings = savingsRef.current;
+    const curPoints = happinessPointsRef.current;
+    const curChosenBase = chosenBaseExpensesRef.current;
+    const curInvested = investedCapitalRef.current;
+
+    const unpaidFixed = curFixed.filter((e) => !e.isPaid);
     let totalPenalty = 0;
 
     // Carried over unpaid expenses with +8% interest and incremented consecutive unpaid count
@@ -686,8 +729,10 @@ export default function DashboardPage() {
       };
     });
 
+    const newPoints = unpaidFixed.length > 0 ? Math.max(0, curPoints - totalPenalty) : curPoints;
+    setHappinessPoints(newPoints);
+
     if (unpaidFixed.length > 0) {
-      setHappinessPoints((prev) => Math.max(0, prev - totalPenalty));
       setNotification({
         message: `Fim do Mês ${currentMonth}: Penalidade de -${totalPenalty} pts de Felicidade (Escalonada ^1.5)! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros!`,
         type: "error",
@@ -700,15 +745,15 @@ export default function DashboardPage() {
     }
 
     // Apply 2% monthly yield to Invested Capital (CDB Fictício)
-    let updatedInvested = investedCapital;
-    if (investedCapital > 0) {
-      updatedInvested = Math.round(investedCapital * 1.02 * 100) / 100;
+    let updatedInvested = curInvested;
+    if (curInvested > 0) {
+      updatedInvested = Math.round(curInvested * 1.02 * 100) / 100;
       setInvestedCapital(updatedInvested);
     }
 
     // Auto-transfer remaining balance to savings
-    const remainingBalance = Math.max(0, balance);
-    const newSavings = savings + remainingBalance;
+    const remainingBalance = Math.max(0, curBalance);
+    const newSavings = curSavings + remainingBalance;
     const newBalance = MONTHLY_ALLOWANCE;
     setSavings(newSavings);
 
@@ -718,9 +763,9 @@ export default function DashboardPage() {
       setBalance(newBalance);
 
       // Re-use the exact 4 expenses chosen by the player in Month 0 RPG character creation
-      const sourceBase = chosenBaseExpenses.length > 0 
-        ? chosenBaseExpenses 
-        : fixedExpenses.filter((e) => !e.title.includes("⚠️ Atrasado"));
+      const sourceBase = curChosenBase.length > 0 
+        ? curChosenBase 
+        : curFixed.filter((e) => !e.title.includes("⚠️ Atrasado"));
 
       const baseNewMonthExpenses: ExpenseItem[] = sourceBase.map((e, idx) => ({
         ...e,
@@ -729,21 +774,28 @@ export default function DashboardPage() {
         consecutiveMonths: 1,
       }));
 
-      setFixedExpenses([...carriedOverExpenses, ...baseNewMonthExpenses]);
+      const finalFixedList = [...carriedOverExpenses, ...baseNewMonthExpenses];
+      setFixedExpenses(finalFixedList);
       setActiveUnforeseen(null);
       setModalCountdown(null);
 
-      syncGroupMetrics(newBalance, newSavings, Math.max(0, happinessPoints - totalPenalty), nextMonth);
+      const token = typeof window !== "undefined" && localStorage.getItem("finGame_groupToken");
+      if (token) {
+        localStorage.setItem(`finGame_fixedExpenses_${token}`, JSON.stringify(finalFixedList));
+      }
+
+      syncGroupMetrics(newBalance, newSavings, newPoints, nextMonth);
     } else {
       // FINAL MONTH (Mês 6 Vencimento dos Investimentos!)
       let finalBonus = 0;
+      let finalBal = newBalance;
       if (updatedInvested > 0) {
         finalBonus = 150; // Massivo bônus de maturidade no Mês Final sem impostos!
-        setBalance((prev) => prev + updatedInvested);
+        finalBal = newBalance + updatedInvested;
+        setBalance(finalBal);
         setHappinessPoints((prev) => prev + finalBonus);
         setInvestedCapital(0);
       }
-
       setNotification({
         message: `🎉 PARABÉNS! Você chegou ao Mês Final! ${updatedInvested > 0 ? `Investimento resgatado SEM IMPOSTOS + Bônus de +${finalBonus} pts!` : "Use a sua Poupança para comprar Metas de Longo Prazo!"}`,
         type: "success",
@@ -974,25 +1026,39 @@ export default function DashboardPage() {
     });
   };
 
-  // Action: Buy Long-Term Goal (only in final month using savings)
+  // Action: Buy Long-Term Goal / Recompensa Final (only in final month using savings + balance)
   const handleBuyGoal = (goal: ExpenseItem) => {
-    if (savings < goal.cost) {
+    if (boughtGoalIds.includes(goal.id)) return;
+    const totalAvailable = balance + savings;
+    if (totalAvailable < goal.cost) {
       setNotification({
-        message: "Poupança insuficiente para adquirir esta Meta de Longo Prazo!",
+        message: "Saldo e Poupança insuficientes para adquirir esta Recompensa Final!",
         type: "warning",
       });
       return;
     }
 
-    const newSavings = savings - goal.cost;
+    let newBalance = balance;
+    let newSavings = savings;
+
+    if (savings >= goal.cost) {
+      newSavings = savings - goal.cost;
+    } else {
+      const rest = goal.cost - savings;
+      newSavings = 0;
+      newBalance = balance - rest;
+    }
+
     const newPoints = happinessPoints + goal.happinessPoints;
+    setBalance(newBalance);
     setSavings(newSavings);
     setHappinessPoints(newPoints);
-    setLongTermGoals((prev) => prev.filter((g) => g.id !== goal.id));
-    syncGroupMetrics(balance, newSavings, newPoints, currentMonth);
+    setBoughtGoalIds((prev) => [...prev, goal.id]);
+
+    syncGroupMetrics(newBalance, newSavings, newPoints, currentMonth);
 
     setNotification({
-      message: `🏆 META ALCANÇADA: ${goal.title}! Bônus MASSIVO de +${goal.happinessPoints} Pontos de Felicidade!`,
+      message: `🏆 RECOMPENSA CONQUISTADA: ${goal.title}! Bônus MASSIVO de +${goal.happinessPoints} Pontos de Felicidade!`,
       type: "success",
     });
   };
@@ -1477,56 +1543,69 @@ export default function DashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {longTermGoals.map((goal) => (
-                <div
-                  key={goal.id}
-                  className="glass-panel p-5 rounded-xl border border-purple-500/20 flex flex-col justify-between hover:border-purple-500/50 transition-all"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
-                        {goal.category}
-                      </span>
-                      <span className="text-xs font-extrabold text-amber-300 flex items-center gap-1">
-                        <Heart className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                        +{goal.happinessPoints} pts
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-white text-base mb-1">{goal.title}</h3>
-                    <p className="text-xs text-slate-400 mb-4">{goal.description}</p>
-                  </div>
+              {longTermGoals.map((goal) => {
+                const isBought = boughtGoalIds.includes(goal.id);
+                const totalAvailable = balance + savings;
+                const canBuy = totalAvailable >= goal.cost && !isBought;
 
-                  <div className="pt-3 border-t border-white/5 flex items-center justify-between">
-                    <span className="text-sm font-extrabold text-purple-300">
-                      R$ {goal.cost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                    </span>
-                    <button
-                      onClick={() => handleBuyGoal(goal)}
-                      disabled={savings < goal.cost}
-                      className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
-                        savings >= goal.cost
-                          ? "bg-purple-600 hover:bg-purple-500 text-white glow-purple"
-                          : "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
-                      }`}
-                    >
-                      <Award className="w-4 h-4" />
-                      <span>Conquistar</span>
-                    </button>
+                return (
+                  <div
+                    key={goal.id}
+                    className={`glass-panel p-5 rounded-xl border flex flex-col justify-between transition-all ${
+                      isBought
+                        ? "bg-slate-950/40 border-white/5 opacity-60"
+                        : "border-purple-500/20 hover:border-purple-500/50"
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                          {goal.category}
+                        </span>
+                        <span className="text-xs font-extrabold text-amber-300 flex items-center gap-1">
+                          <Heart className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          +{goal.happinessPoints} pts
+                        </span>
+                      </div>
+                      <h3 className="font-bold text-white text-base mb-1">{goal.title}</h3>
+                      <p className="text-xs text-slate-400 mb-4">{goal.description}</p>
+                    </div>
+
+                    <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                      <span className="text-sm font-extrabold text-purple-300">
+                        R$ {goal.cost.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </span>
+                      <button
+                        onClick={() => handleBuyGoal(goal)}
+                        disabled={!canBuy}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-md flex items-center gap-1.5 ${
+                          isBought
+                            ? "bg-slate-900 text-slate-500 border border-white/5 cursor-not-allowed"
+                            : canBuy
+                            ? "bg-purple-600 hover:bg-purple-500 text-white glow-purple"
+                            : "bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5"
+                        }`}
+                      >
+                        <Award className="w-4 h-4" />
+                        <span>{isBought ? "Já Conquistado" : "Conquistar"}</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {longTermGoals.length === 0 && (
                 <div className="col-span-3 text-center py-8 text-emerald-400 font-semibold bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                  🎉 Todas as grandes metas foram conquistadas com sucesso! Aguarde o ranking final!
+                  🎉 Todas as grandes metas foram conquistadas com sucesso! Aguarde o encerramento do facilitador!
                 </div>
               )}
             </div>
           </section>
         )}
 
-        {/* Main Section: 2 Columns Layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Main Section: 2 Columns Layout (Months 1 to 5 Only) */}
+        {currentMonth < TOTAL_MONTHS && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Fixed Mandatory Expenses (Despesas Fixas) */}
           <div className="lg:col-span-5 space-y-4">
             <div className="glass-panel p-5 rounded-2xl border border-white/10">
@@ -1696,7 +1775,8 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-      </main>
+      )}
+    </main>
 
       {/* Unforeseen Event Modal (With 30s Decision Timer & Flash Promo Option) */}
       {activeUnforeseen && (

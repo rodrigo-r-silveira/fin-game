@@ -250,6 +250,22 @@ export default function AdminPage() {
     }
   };
 
+  // Finish game for all groups in DB and view final ranking
+  const handleFinishGame = async () => {
+    if (!confirm("🏁 Tem certeza que deseja finalizar a dinâmica e visualizar o Ranking Final com todos os participantes?")) return;
+    try {
+      const res = await fetch("/api/groups/finish", { method: "POST" });
+      const data = await res.json();
+      if (data.success) {
+        router.push("/final-ranking");
+      } else {
+        alert(`Erro ao finalizar jogo: ${data.error}`);
+      }
+    } catch (err) {
+      alert("Erro de conexão ao finalizar jogo.");
+    }
+  };
+
   const copyRegistrationUrl = () => {
     navigator.clipboard.writeText(registerUrl);
     setCopiedLink(true);
@@ -481,6 +497,25 @@ export default function AdminPage() {
                 <div>
                   <div className="text-xs sm:text-sm font-extrabold">Disparar Imprevisto</div>
                   <div className="text-[11px] opacity-80 font-normal">Alerta surpresa ao vivo</div>
+                </div>
+              </button>
+
+              <button
+                onClick={handleFinishGame}
+                disabled={!gameStarted}
+                className={`p-4 rounded-2xl border font-bold text-left transition-all flex flex-col justify-between h-28 col-span-1 sm:col-span-3 ${
+                  gameStarted
+                    ? "bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-700 hover:from-emerald-500 hover:to-indigo-600 text-white border-emerald-500/40 shadow-xl glow-emerald"
+                    : "bg-slate-900 border-white/5 text-slate-500 cursor-not-allowed"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <Trophy className="w-5 h-5 text-amber-300" />
+                  <span className="text-[10px] uppercase font-bold text-amber-300">Encerramento Oficial</span>
+                </div>
+                <div>
+                  <div className="text-xs sm:text-sm font-extrabold">🏁 Finalizar Dinâmica e Visualizar Ranking Final</div>
+                  <div className="text-[11px] opacity-80 font-normal">Exibe o pódio e o ranking final para todos os participantes ao vivo</div>
                 </div>
               </button>
             </div>

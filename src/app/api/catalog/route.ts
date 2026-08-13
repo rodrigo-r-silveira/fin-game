@@ -185,6 +185,35 @@ const DEFAULT_CATALOG = [
     description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
     isRPGChoice: false,
   },
+
+  // Recompensas Finais (Metas de Longo Prazo - Mês 6)
+  {
+    title: "Viagem dos Sonhos (Mochilão Europa)",
+    cost: 3200.0,
+    happinessPoints: 300,
+    type: "LONG_TERM_GOAL" as const,
+    category: "Recompensa Final",
+    description: "Incrível viagem com tudo pago para celebrar o fim da jornada com chave de ouro!",
+    isRPGChoice: false,
+  },
+  {
+    title: "Notebook Gamer / Workstation Pro",
+    cost: 2400.0,
+    happinessPoints: 220,
+    type: "LONG_TERM_GOAL" as const,
+    category: "Recompensa Final",
+    description: "Equipamento de última geração para sua carreira profissional e lazer.",
+    isRPGChoice: false,
+  },
+  {
+    title: "Reserva de Emergência & Fundo de Liberdade",
+    cost: 1500.0,
+    happinessPoints: 150,
+    type: "LONG_TERM_GOAL" as const,
+    category: "Recompensa Final",
+    description: "Tranquilidade absoluta e segurança financeira para o futuro.",
+    isRPGChoice: false,
+  },
 ];
 
 // Default Initial 6 Unforeseen Events (Mensagens Relâmpago)
