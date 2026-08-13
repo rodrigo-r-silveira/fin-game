@@ -89,7 +89,7 @@ export async function DELETE(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, qrCodeToken, balance, savings, happinessPoints, currentMonth, isRPGConfirmed, updateMonthStartedAt } = body;
+    const { id, qrCodeToken, balance, savings, happinessPoints, currentMonth, isRPGConfirmed, updateMonthStartedAt, achievedGoal } = body;
 
     if (!id && !qrCodeToken) {
       return NextResponse.json(
@@ -108,6 +108,7 @@ export async function PATCH(req: Request) {
         ...(typeof happinessPoints === "number" && { happinessPoints }),
         ...(typeof currentMonth === "number" && { currentMonth }),
         ...(typeof isRPGConfirmed === "boolean" && { isRPGConfirmed }),
+        ...(typeof achievedGoal === "string" && { achievedGoal }),
         ...(updateMonthStartedAt === true && { monthStartedAt: new Date() }),
       },
     });

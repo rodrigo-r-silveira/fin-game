@@ -29,6 +29,7 @@ model Group {
   isStarted                Boolean       @default(false)
   isRPGConfirmed          Boolean       @default(false)             // Indica se o grupo concluiu a montagem do personagem no Mês 0
   isGameFinished           Boolean       @default(false)
+  achievedGoal             String?                     // Nome da meta final conquistada
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @updatedAt
   transactions     Transaction[]

@@ -142,13 +142,17 @@ export default function DashboardPage() {
                   router.push("/final-ranking");
                   return;
                 }
+                if (!matched.isStarted) {
+                  router.push(`/waiting-room?token=${token}`);
+                  return;
+                }
                 setGroupName(matched.name);
                 if (matched.isRPGConfirmed !== undefined) setIsRPGConfirmed(matched.isRPGConfirmed);
 
-                // Remote Month Advance by Admin or Timer Expiration
+                // Remote Month Advance by Admin
                 if (matched.currentMonth !== undefined && matched.currentMonth !== currentMonth) {
-                  if (matched.currentMonth > currentMonth && currentMonth > 0) {
-                    handleMonthEnd();
+                  if (matched.currentMonth > currentMonth && currentMonth >= 0) {
+                    handleMonthTransition(matched.currentMonth);
                   } else {
                     setCurrentMonth(matched.currentMonth);
                     setBalance(matched.balance);
@@ -284,67 +288,105 @@ export default function DashboardPage() {
   // Dynamic single-use temptations catalog loaded directly from admin catalog (/api/catalog)
   const temptations: ExpenseItem[] = useMemo(() => {
     const adminTemptations = catalogItems.filter((i) => i.type === "TEMPTATION");
-    if (adminTemptations.length > 0) {
-      return adminTemptations.map((i) => ({
-        id: i.id,
-        title: i.title,
-        cost: i.cost,
-        happinessPoints: i.happinessPoints,
-        type: "TEMPTATION" as const,
-        category: i.category || "Lazer",
-        description: i.description || "Tentação de gasto cadastrada no catálogo administrativo.",
-      }));
+    const source: ExpenseItem[] = adminTemptations.length > 0
+      ? adminTemptations.map((i) => ({
+          id: i.id,
+          title: i.title,
+          cost: i.cost,
+          happinessPoints: i.happinessPoints,
+          type: "TEMPTATION" as const,
+          category: i.category || "Lazer",
+          description: i.description || "Tentação de gasto cadastrada no catálogo administrativo.",
+        }))
+      : [
+          {
+            id: "t1",
+            title: "Ingresso de Show no Fim de Semana",
+            cost: 180.0,
+            happinessPoints: 45,
+            type: "TEMPTATION" as const,
+            category: "Lazer",
+            description: "Shows imperdíveis com a galera no sábado à noite! (Uso único)",
+          },
+          {
+            id: "t2",
+            title: "Jantar Especial em Restaurante Chique",
+            cost: 140.0,
+            happinessPoints: 35,
+            type: "TEMPTATION" as const,
+            category: "Gastronomia",
+            description: "Experiência culinária única para relaxar na sexta. (Uso único)",
+          },
+          {
+            id: "t3",
+            title: "Fone de Ouvido Noise Cancelling",
+            cost: 320.0,
+            happinessPoints: 70,
+            type: "TEMPTATION" as const,
+            category: "Gadgets",
+            description: "Foco total nos estudos e música sem ruídos. (Uso único)",
+          },
+          {
+            id: "t4",
+            title: "Passeio de Bate-Volta na Praia",
+            cost: 120.0,
+            happinessPoints: 30,
+            type: "TEMPTATION" as const,
+            category: "Viagem",
+            description: "Sol, mar e recarga de energias com os amigos. (Uso único)",
+          },
+          {
+            id: "t5",
+            title: "Assinatura VIP de Plataforma de Games",
+            cost: 65.0,
+            happinessPoints: 20,
+            type: "TEMPTATION" as const,
+            category: "Entretenimento",
+            description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
+          },
+          {
+            id: "t6",
+            title: "Combo de Fast Food no Meio da Semana",
+            cost: 55.0,
+            happinessPoints: 15,
+            type: "TEMPTATION" as const,
+            category: "Gastronomia",
+            description: "Lanche rápido e saboroso para descontrair.",
+          },
+          {
+            id: "t7",
+            title: "Camisa Oficial do Time de Futebol",
+            cost: 250.0,
+            happinessPoints: 50,
+            type: "TEMPTATION" as const,
+            category: "Lazer",
+            description: "Vestir as cores do seu time favorito.",
+          },
+          {
+            id: "t8",
+            title: "Ingresso VIP para Cinema 4D",
+            cost: 95.0,
+            happinessPoints: 25,
+            type: "TEMPTATION" as const,
+            category: "Entretenimento",
+            description: "Sessão com pipoca grande e cadeira reclinável.",
+          },
+        ];
+
+    // Exclude any temptations already bought
+    const unbought = source.filter((t) => !boughtTemptationIds.includes(t.id));
+
+    // Pseudo-random deterministic shuffle per month & group name
+    const seed = currentMonth * 37 + (groupName ? groupName.length * 13 : 7);
+    const shuffled = [...unbought];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.abs((seed * (i + 1)) % (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    // Fallback default temptations if catalog is empty
-    return [
-      {
-        id: "t1",
-        title: "Ingresso de Show no Fim de Semana",
-        cost: 180.0,
-        happinessPoints: 45,
-        type: "TEMPTATION",
-        category: "Lazer",
-        description: "Shows imperdíveis com a galera no sábado à noite! (Uso único)",
-      },
-      {
-        id: "t2",
-        title: "Jantar Especial em Restaurante Chique",
-        cost: 140.0,
-        happinessPoints: 35,
-        type: "TEMPTATION",
-        category: "Gastronomia",
-        description: "Experiência culinária única para relaxar na sexta. (Uso único)",
-      },
-      {
-        id: "t3",
-        title: "Fone de Ouvido Noise Cancelling",
-        cost: 320.0,
-        happinessPoints: 70,
-        type: "TEMPTATION",
-        category: "Gadgets",
-        description: "Foco total nos estudos e música sem ruídos. (Uso único)",
-      },
-      {
-        id: "t4",
-        title: "Passeio de Bate-Volta na Praia",
-        cost: 120.0,
-        happinessPoints: 30,
-        type: "TEMPTATION",
-        category: "Viagem",
-        description: "Sol, mar e recarga de energias com os amigos. (Uso único)",
-      },
-      {
-        id: "t5",
-        title: "Assinatura VIP de Plataforma de Games",
-        cost: 65.0,
-        happinessPoints: 20,
-        type: "TEMPTATION",
-        category: "Entretenimento",
-        description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
-      },
-    ];
-  }, [catalogItems]);
+    // Maximum 6 temptations per month
+    return shuffled.slice(0, 6);
+  }, [catalogItems, boughtTemptationIds, currentMonth, groupName]);
 
   // Dynamic final month goals (Recompensas Finais) loaded directly from admin catalog (/api/catalog)
   const longTermGoals: ExpenseItem[] = useMemo(() => {
@@ -427,11 +469,6 @@ export default function DashboardPage() {
         // Trigger Imprevisto at random time (between 120s and 180s remaining)
         if (remaining === unforeseenTriggerTime && !activeUnforeseen) {
           triggerUnforeseenEvent();
-        }
-
-        // Auto-advance month when 5 minutes expire
-        if (remaining <= 0) {
-          handleMonthEnd();
         }
       }
     }, 1000);
@@ -556,7 +593,7 @@ export default function DashboardPage() {
   };
 
   // Sync group metrics with backend API
-  const syncGroupMetrics = (newBalance: number, newSavings: number, newPoints: number, newMonth: number) => {
+  const syncGroupMetrics = (newBalance: number, newSavings: number, newPoints: number, newMonth: number, achievedGoal?: string) => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const token = params.get("token") || localStorage.getItem("finGame_groupToken");
@@ -570,6 +607,7 @@ export default function DashboardPage() {
             savings: newSavings,
             happinessPoints: newPoints,
             currentMonth: newMonth,
+            ...(achievedGoal && { achievedGoal }),
           }),
         }).catch(() => {});
       }
@@ -693,7 +731,9 @@ export default function DashboardPage() {
   };
 
   // Turn of month logic (with 8% interest & 1.5 power exponential penalty)
-  const handleMonthEnd = () => {
+  const handleMonthTransition = (targetMonthInput?: number) => {
+    const nextMonth = targetMonthInput !== undefined ? targetMonthInput : currentMonth + 1;
+
     const curFixed = fixedExpensesRef.current;
     const curBalance = balanceRef.current;
     const curSavings = savingsRef.current;
@@ -720,7 +760,7 @@ export default function DashboardPage() {
 
       return {
         ...e,
-        id: `overdue-${currentMonth}-${idx}-${Date.now()}`,
+        id: `overdue-${nextMonth}-${idx}-${Date.now()}`,
         title: titleClean,
         cost: newCost,
         isPaid: false,
@@ -734,12 +774,12 @@ export default function DashboardPage() {
 
     if (unpaidFixed.length > 0) {
       setNotification({
-        message: `Fim do Mês ${currentMonth}: Penalidade de -${totalPenalty} pts de Felicidade (Escalonada ^1.5)! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros!`,
+        message: `Entrando no Mês ${nextMonth}: Penalidade de -${totalPenalty} pts de Felicidade! ${unpaidFixed.length} despesa(s) não paga(s) acumularam +8% de juros!`,
         type: "error",
       });
     } else {
       setNotification({
-        message: `Mês ${currentMonth} encerrado com sucesso! Sobra transferida para a Poupança. +Bolsa Auxílio recebida!`,
+        message: `Mês ${nextMonth} iniciado com sucesso! Sobra transferida para a Poupança. +Bolsa Auxílio recebida!`,
         type: "success",
       });
     }
@@ -755,13 +795,12 @@ export default function DashboardPage() {
     const remainingBalance = Math.max(0, curBalance);
     const newSavings = curSavings + remainingBalance;
     const newBalance = MONTHLY_ALLOWANCE;
+
     setSavings(newSavings);
+    setBalance(newBalance);
+    setCurrentMonth(nextMonth);
 
-    if (currentMonth < TOTAL_MONTHS) {
-      const nextMonth = currentMonth + 1;
-      setCurrentMonth(nextMonth);
-      setBalance(newBalance);
-
+    if (nextMonth <= TOTAL_MONTHS) {
       // Re-use the exact 4 expenses chosen by the player in Month 0 RPG character creation
       const sourceBase = curChosenBase.length > 0 
         ? curChosenBase 
@@ -1055,7 +1094,7 @@ export default function DashboardPage() {
     setHappinessPoints(newPoints);
     setBoughtGoalIds((prev) => [...prev, goal.id]);
 
-    syncGroupMetrics(newBalance, newSavings, newPoints, currentMonth);
+    syncGroupMetrics(newBalance, newSavings, newPoints, currentMonth, goal.title);
 
     setNotification({
       message: `🏆 RECOMPENSA CONQUISTADA: ${goal.title}! Bônus MASSIVO de +${goal.happinessPoints} Pontos de Felicidade!`,
