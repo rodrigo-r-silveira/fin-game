@@ -69,6 +69,9 @@ export default function DashboardPage() {
   // Single-use temptations tracking
   const [boughtTemptationIds, setBoughtTemptationIds] = useState<string[]>([]);
 
+  // Month 0 RPG character confirmation state
+  const [isRPGConfirmed, setIsRPGConfirmed] = useState<boolean>(false);
+
   // Chosen base fixed expenses from Month 0 RPG character creation
   const [chosenBaseExpenses, setChosenBaseExpenses] = useState<ExpenseItem[]>([]);
 
@@ -130,6 +133,7 @@ export default function DashboardPage() {
                 setSavings(matched.savings);
                 if (matched.investments) setInvestedCapital(matched.investments);
                 if (matched.happinessPoints) setHappinessPoints(matched.happinessPoints);
+                if (matched.isRPGConfirmed !== undefined) setIsRPGConfirmed(matched.isRPGConfirmed);
 
                 // Remote Month Advance by Admin
                 if (matched.currentMonth !== undefined && matched.currentMonth !== currentMonth) {
@@ -588,19 +592,29 @@ export default function DashboardPage() {
     setFixedExpenses(initialFixedExpenses);
     setChosenBaseExpenses(initialFixedExpenses);
     setHappinessPoints(totalRPGPoints);
-    setCurrentMonth(1);
+    setIsRPGConfirmed(true);
     setBalance(MONTHLY_ALLOWANCE);
-    setTimeLeft(MONTH_DURATION_SECONDS);
 
     const token = localStorage.getItem("finGame_groupToken");
     if (token) {
       localStorage.setItem(`finGame_chosenBase_${token}`, JSON.stringify(initialFixedExpenses));
+      localStorage.setItem(`finGame_isRPGConfirmed_${token}`, "true");
+
+      fetch("/api/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          qrCodeToken: token,
+          balance: MONTHLY_ALLOWANCE,
+          savings,
+          happinessPoints: totalRPGPoints,
+          isRPGConfirmed: true,
+        }),
+      }).catch(() => {});
     }
 
-    syncGroupMetrics(MONTHLY_ALLOWANCE, savings, totalRPGPoints, 1);
-
     setNotification({
-      message: "🎭 Personagem montado com sucesso! Mês 1 iniciado com suas despesas personalizadas. Gerencie seu orçamento com sabedoria!",
+      message: "🎭 Personagem montado com sucesso! Aguarde os outros grupos confirmarem suas escolhas ou o término do tempo de 5 minutos do Mês 0...",
       type: "success",
     });
   };
@@ -972,6 +986,42 @@ export default function DashboardPage() {
   // RENDER MONTH 0 (RPG CHARACTER SETUP SCREEN)
   // ==========================================
   if (currentMonth === 0) {
+    if (isRPGConfirmed) {
+      return (
+        <div className="min-h-screen p-6 text-slate-100 flex flex-col items-center justify-center max-w-xl mx-auto space-y-6 text-center">
+          <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-2xl glow-emerald animate-pulse">
+            <CheckCircle2 className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-bold uppercase tracking-wider">
+              <UserCheck className="w-4 h-4" />
+              <span>Personagem Confirmado</span>
+            </div>
+            <h1 className="text-2xl font-black text-white">Personagem Criado com Sucesso!</h1>
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Suas 4 opções de estilo de vida foram salvas. Aguarde todos os outros grupos confirmarem suas escolhas ou o encerramento do cronômetro de 5 minutos para o jogo avançar para o Mês 1!
+            </p>
+          </div>
+
+          <div className="p-4 rounded-2xl glass-panel border border-amber-500/30 text-amber-300 font-mono font-bold text-sm w-full flex items-center justify-between shadow-lg">
+            <span className="text-xs text-slate-400 font-sans">Tempo Restante no Mês 0:</span>
+            <span className="text-base font-extrabold text-amber-300 px-3 py-1 rounded-lg bg-amber-950/80 border border-amber-500/40">
+              {formatTime(timeLeft)}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-xs text-purple-200 text-left space-y-1 w-full">
+            <span className="font-bold text-purple-300 block">Sua Seleção de Estilo de Vida:</span>
+            {rpgChoices.housing && <p>• Moradia: <strong>{rpgChoices.housing.title}</strong> (R$ {rpgChoices.housing.cost})</p>}
+            {rpgChoices.food && <p>• Alimentação: <strong>{rpgChoices.food.title}</strong> (R$ {rpgChoices.food.cost})</p>}
+            {rpgChoices.transport && <p>• Transporte: <strong>{rpgChoices.transport.title}</strong> (R$ {rpgChoices.transport.cost})</p>}
+            {rpgChoices.tech && <p>• Conectividade: <strong>{rpgChoices.tech.title}</strong> (R$ {rpgChoices.tech.cost})</p>}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen p-4 sm:p-6 text-slate-100 flex flex-col items-center justify-center max-w-5xl mx-auto space-y-6">
         <div className="text-center space-y-2 max-w-xl">

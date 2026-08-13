@@ -535,12 +535,18 @@ export default function AdminPage() {
                         <h4 className="font-bold text-white text-sm">{group.name}</h4>
                         <span
                           className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            group.isStarted
+                            !group.isStarted
+                              ? "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : (group as any).isRPGConfirmed
                               ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              : "bg-purple-500/20 text-purple-300 border border-purple-500/30 animate-pulse"
                           }`}
                         >
-                          {group.isStarted ? "Em Jogo" : "Na Espera"}
+                          {!group.isStarted
+                            ? "Na Espera"
+                            : (group as any).isRPGConfirmed
+                            ? "✅ Personagem Pronto"
+                            : "⏳ Montando Personagem"}
                         </span>
                       </div>
                       <span className="text-[11px] text-slate-400 font-mono">

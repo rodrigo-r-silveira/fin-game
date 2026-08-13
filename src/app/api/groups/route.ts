@@ -89,7 +89,7 @@ export async function DELETE(req: Request) {
 export async function PATCH(req: Request) {
   try {
     const body = await req.json();
-    const { id, qrCodeToken, balance, savings, happinessPoints, currentMonth } = body;
+    const { id, qrCodeToken, balance, savings, happinessPoints, currentMonth, isRPGConfirmed } = body;
 
     if (!id && !qrCodeToken) {
       return NextResponse.json(
@@ -107,8 +107,26 @@ export async function PATCH(req: Request) {
         ...(typeof savings === "number" && { savings }),
         ...(typeof happinessPoints === "number" && { happinessPoints }),
         ...(typeof currentMonth === "number" && { currentMonth, monthStartedAt: new Date() }),
+        ...(typeof isRPGConfirmed === "boolean" && { isRPGConfirmed }),
       },
     });
+
+    // Check if all started groups in Mês 0 have confirmed their character choices
+    if (isRPGConfirmed) {
+      const activeGroups = await prisma.group.findMany({
+        where: { isStarted: true, isGameFinished: false },
+      });
+      const allConfirmed = activeGroups.length > 0 && activeGroups.every((g) => g.isRPGConfirmed || g.currentMonth > 0);
+      if (allConfirmed) {
+        await prisma.group.updateMany({
+          where: { isStarted: true, currentMonth: 0 },
+          data: {
+            currentMonth: 1,
+            monthStartedAt: new Date(),
+          },
+        });
+      }
+    }
 
     return NextResponse.json({ success: true, group: updated });
   } catch (error: any) {
