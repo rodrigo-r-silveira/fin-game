@@ -24,6 +24,7 @@ import {
   Timer,
   UserCheck,
   Zap,
+  X,
 } from "lucide-react";
 
 // Types matching Prisma schema & app state
@@ -78,6 +79,15 @@ export default function DashboardPage() {
   // Imprevisto random trigger time (between 120s and 180s remaining) & modal countdown (30s)
   const [unforeseenTriggerTime, setUnforeseenTriggerTime] = useState<number>(150);
   const [modalCountdown, setModalCountdown] = useState<number | null>(null);
+
+  // Interactive Modals state (Deposit to Savings, Withdraw from Savings, Invest)
+  const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState<boolean>(false);
+  const [showInvestModal, setShowInvestModal] = useState<boolean>(false);
+
+  const [depositAmountInput, setDepositAmountInput] = useState<string>("");
+  const [withdrawAmountInput, setWithdrawAmountInput] = useState<string>("");
+  const [investAmountInput, setInvestAmountInput] = useState<string>("");
 
   // RPG Month 0 character choices state
   const [rpgChoices, setRpgChoices] = useState<{
@@ -135,9 +145,13 @@ export default function DashboardPage() {
                 if (matched.happinessPoints) setHappinessPoints(matched.happinessPoints);
                 if (matched.isRPGConfirmed !== undefined) setIsRPGConfirmed(matched.isRPGConfirmed);
 
-                // Remote Month Advance by Admin
+                // Remote Month Advance by Admin or Timer Expiration
                 if (matched.currentMonth !== undefined && matched.currentMonth !== currentMonth) {
-                  setCurrentMonth(matched.currentMonth);
+                  if (matched.currentMonth > currentMonth && currentMonth > 0) {
+                    handleMonthEnd();
+                  } else {
+                    setCurrentMonth(matched.currentMonth);
+                  }
                 }
 
                 // Global Timer Sync using server timestamp
@@ -1343,16 +1357,22 @@ export default function DashboardPage() {
             </div>
             <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-white/5 gap-1">
               <button
-                onClick={() => handleDepositToSavings(Math.min(balance, 200))}
+                onClick={() => {
+                  setDepositAmountInput(balance > 0 ? balance.toString() : "");
+                  setShowDepositModal(true);
+                }}
                 disabled={balance <= 0}
-                className="px-2 py-0.5 rounded bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 font-semibold text-[10px] disabled:opacity-40"
+                className="px-2.5 py-1 rounded bg-purple-500/20 hover:bg-purple-500/40 text-purple-200 font-bold text-[11px] disabled:opacity-40 transition-colors flex items-center gap-1"
               >
                 + Guardar
               </button>
               <button
-                onClick={() => handleWithdrawFromSavings(Math.min(savings, 200))}
+                onClick={() => {
+                  setWithdrawAmountInput(savings > 0 ? savings.toString() : "");
+                  setShowWithdrawModal(true);
+                }}
                 disabled={savings <= 0}
-                className="px-2 py-0.5 rounded bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-200 font-semibold text-[10px] disabled:opacity-40"
+                className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-200 font-bold text-[11px] disabled:opacity-40 transition-colors flex items-center gap-1"
               >
                 - Resgatar
               </button>
@@ -1372,9 +1392,12 @@ export default function DashboardPage() {
             </div>
             <div className="mt-2.5 flex items-center justify-between text-[11px] pt-2 border-t border-white/5 gap-1">
               <button
-                onClick={() => handleInvestMoney(Math.min(balance, 300))}
+                onClick={() => {
+                  setInvestAmountInput(balance > 0 ? balance.toString() : "");
+                  setShowInvestModal(true);
+                }}
                 disabled={balance <= 0}
-                className="px-2 py-0.5 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 font-semibold text-[10px] disabled:opacity-40"
+                className="px-2.5 py-1 rounded bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 font-bold text-[11px] disabled:opacity-40 transition-colors flex items-center gap-1"
               >
                 + Aplicação (+2%)
               </button>
@@ -1491,7 +1514,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <h2 className="text-base font-bold text-white">Despesas Fixas do Mês</h2>
-                    <p className="text-xs text-slate-400">Obrigatórias (+8% Juros & Penalidade Exponencial ^1.5)</p>
+                    <p className="text-xs text-slate-400">Despesas obrigatórias do período</p>
                   </div>
                 </div>
                 <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 border border-white/10">
@@ -1731,6 +1754,308 @@ export default function DashboardPage() {
                 <span>Ignorar (-{activeUnforeseen.penaltyIfNotFixedPoints} pts)</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {/* Deposit Modal (+ Guardar na Poupança) */}
+      {showDepositModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md glass-panel p-6 rounded-3xl border border-purple-500/40 space-y-4 shadow-2xl glow-purple">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <PiggyBank className="w-5 h-5 text-purple-400" />
+                <h3 className="text-base font-bold text-white">Guardar na Poupança</h3>
+              </div>
+              <button
+                onClick={() => setShowDepositModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Digite o valor do seu <strong>Saldo Mensal</strong> (R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}) que deseja guardar na Poupança:
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = parseFloat(depositAmountInput);
+                if (isNaN(val) || val <= 0) {
+                  setNotification({ message: "Digite um valor válido!", type: "warning" });
+                  return;
+                }
+                if (val > balance) {
+                  setNotification({ message: "Saldo mensal insuficiente para esse valor!", type: "warning" });
+                  return;
+                }
+                handleDepositToSavings(val);
+                setShowDepositModal(false);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Valor a guardar (R$):</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={balance}
+                  value={depositAmountInput}
+                  onChange={(e) => setDepositAmountInput(e.target.value)}
+                  placeholder="0,00"
+                  required
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/15 text-white text-sm font-extrabold focus:outline-none focus:border-purple-500 font-mono"
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold block">Valores Rápidos:</span>
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  {[50, 100, 200, 500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setDepositAmountInput(Math.min(amt, balance).toString())}
+                      disabled={balance < amt}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-purple-900/50 text-purple-200 border border-purple-500/20 text-xs font-bold disabled:opacity-30 transition-colors"
+                    >
+                      R$ {amt}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setDepositAmountInput(balance.toString())}
+                    disabled={balance <= 0}
+                    className="px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 text-xs font-bold transition-colors"
+                  >
+                    Todo o Saldo
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowDepositModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white font-extrabold text-xs shadow-lg glow-purple flex items-center gap-1.5"
+                >
+                  <PiggyBank className="w-4 h-4" />
+                  <span>Confirmar Depósito</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Withdraw Modal (- Resgatar da Poupança) */}
+      {showWithdrawModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md glass-panel p-6 rounded-3xl border border-emerald-500/40 space-y-4 shadow-2xl glow-emerald">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Wallet className="w-5 h-5 text-emerald-400" />
+                <h3 className="text-base font-bold text-white">Resgatar da Poupança</h3>
+              </div>
+              <button
+                onClick={() => setShowWithdrawModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Digite o valor da sua <strong>Poupança</strong> (R$ {savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}) que deseja resgatar para o seu Saldo Mensal:
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = parseFloat(withdrawAmountInput);
+                if (isNaN(val) || val <= 0) {
+                  setNotification({ message: "Digite um valor válido!", type: "warning" });
+                  return;
+                }
+                if (val > savings) {
+                  setNotification({ message: "Poupança insuficiente para esse valor!", type: "warning" });
+                  return;
+                }
+                handleWithdrawFromSavings(val);
+                setShowWithdrawModal(false);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Valor a resgatar (R$):</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={savings}
+                  value={withdrawAmountInput}
+                  onChange={(e) => setWithdrawAmountInput(e.target.value)}
+                  placeholder="0,00"
+                  required
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/15 text-white text-sm font-extrabold focus:outline-none focus:border-emerald-500 font-mono"
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold block">Valores Rápidos:</span>
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  {[50, 100, 200, 500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setWithdrawAmountInput(Math.min(amt, savings).toString())}
+                      disabled={savings < amt}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-emerald-900/50 text-emerald-200 border border-emerald-500/20 text-xs font-bold disabled:opacity-30 transition-colors"
+                    >
+                      R$ {amt}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setWithdrawAmountInput(savings.toString())}
+                    disabled={savings <= 0}
+                    className="px-3 py-1.5 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 text-xs font-bold transition-colors"
+                  >
+                    Toda a Poupança
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowWithdrawModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white font-extrabold text-xs shadow-lg glow-emerald flex items-center gap-1.5"
+                >
+                  <Wallet className="w-4 h-4" />
+                  <span>Confirmar Resgate</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Invest Modal (+ Aplicação em CDB Fictício +2%) */}
+      {showInvestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-md glass-panel p-6 rounded-3xl border border-indigo-500/40 space-y-4 shadow-2xl glow-indigo">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <Percent className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-base font-bold text-white">Investimento CDB (+2%/mês)</h3>
+              </div>
+              <button
+                onClick={() => setShowInvestModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Digite o valor do seu <strong>Saldo Mensal</strong> (R$ {balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}) que deseja aplicar no CDB (+2% de rendimento mensal):
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = parseFloat(investAmountInput);
+                if (isNaN(val) || val <= 0) {
+                  setNotification({ message: "Digite um valor válido!", type: "warning" });
+                  return;
+                }
+                if (val > balance) {
+                  setNotification({ message: "Saldo mensal insuficiente para esse valor!", type: "warning" });
+                  return;
+                }
+                handleInvestMoney(val);
+                setShowInvestModal(false);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Valor a aplicar (R$):</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={balance}
+                  value={investAmountInput}
+                  onChange={(e) => setInvestAmountInput(e.target.value)}
+                  placeholder="0,00"
+                  required
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/15 text-white text-sm font-extrabold focus:outline-none focus:border-indigo-500 font-mono"
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold block">Valores Rápidos:</span>
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  {[100, 200, 300, 500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setInvestAmountInput(Math.min(amt, balance).toString())}
+                      disabled={balance < amt}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-indigo-900/50 text-indigo-200 border border-indigo-500/20 text-xs font-bold disabled:opacity-30 transition-colors"
+                    >
+                      R$ {amt}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setInvestAmountInput(balance.toString())}
+                    disabled={balance <= 0}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 text-xs font-bold transition-colors"
+                  >
+                    Todo o Saldo
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setShowInvestModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-700 hover:from-indigo-500 hover:to-purple-600 text-white font-extrabold text-xs shadow-lg glow-indigo flex items-center gap-1.5"
+                >
+                  <Percent className="w-4 h-4" />
+                  <span>Confirmar Aplicação</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
