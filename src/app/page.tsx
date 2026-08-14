@@ -64,13 +64,6 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-3">
           <Link
-            href="/login-qrcode"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel text-xs font-semibold text-slate-300 hover:text-white border border-white/10 transition-colors"
-          >
-            <QrCode className="w-3.5 h-3.5 text-amber-400" />
-            <span>Usar QR Token</span>
-          </Link>
-          <Link
             href="/admin"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel text-xs font-semibold text-purple-300 hover:text-white border border-purple-500/30 transition-colors"
           >
