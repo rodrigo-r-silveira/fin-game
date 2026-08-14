@@ -25,6 +25,7 @@ import {
   UserCheck,
   Zap,
   X,
+  ArrowRight,
 } from "lucide-react";
 
 // Types matching Prisma schema & app state
@@ -53,7 +54,7 @@ interface UnforeseenEvent {
 }
 
 const MONTH_DURATION_SECONDS = 300; // 5 minutos por mês
-const TOTAL_MONTHS = 6;
+const TOTAL_MONTHS = 7;
 const MONTHLY_ALLOWANCE = 1560.0; // Bolsa Auxílio ajustada para R$ 1.560,00
 
 export default function DashboardPage() {
@@ -66,6 +67,10 @@ export default function DashboardPage() {
   const [investedCapital, setInvestedCapital] = useState<number>(0.0); // Investimentos Fictícios (CDB)
   const [happinessPoints, setHappinessPoints] = useState<number>(100);
   const [groupName, setGroupName] = useState<string>("Grupo Inovadores FinTech");
+
+  // Investment redemption modal in final month
+  const [showInvestBonusModal, setShowInvestBonusModal] = useState<boolean>(false);
+  const [hasClaimedInvestBonus, setHasClaimedInvestBonus] = useState<boolean>(false);
 
   // Single-use temptations tracking
   const [boughtTemptationIds, setBoughtTemptationIds] = useState<string[]>([]);
@@ -452,6 +457,33 @@ export default function DashboardPage() {
     }
   }, [notification]);
 
+  // Check for investment bonus in Final Month (Mês 7)
+  useEffect(() => {
+    if (currentMonth === TOTAL_MONTHS && investedCapital > 0 && !hasClaimedInvestBonus) {
+      setShowInvestBonusModal(true);
+    }
+  }, [currentMonth, investedCapital, hasClaimedInvestBonus]);
+
+  // Action: Claim investment bonus with "Obrigado(a)" button in Final Month
+  const handleClaimInvestmentBonus = () => {
+    const redeemedAmount = investedCapital;
+    const newSavings = savings + redeemedAmount;
+    const newPoints = happinessPoints + 150;
+
+    setSavings(newSavings);
+    setHappinessPoints(newPoints);
+    setInvestedCapital(0.0);
+    setHasClaimedInvestBonus(true);
+    setShowInvestBonusModal(false);
+
+    syncGroupMetrics(balance, newSavings, newPoints, TOTAL_MONTHS);
+
+    setNotification({
+      message: `🎉 R$ ${redeemedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados do investimento +150 pts de Felicidade bônus!`,
+      type: "success",
+    });
+  };
+
   // Randomize unforeseen trigger time whenever month changes
   useEffect(() => {
     if (currentMonth > 0) {
@@ -504,6 +536,8 @@ export default function DashboardPage() {
 
   // Trigger Imprevisto at random time between 2 to 3 minutes (Shuffled per group)
   const triggerUnforeseenEvent = () => {
+    if (currentMonth === TOTAL_MONTHS) return; // Mês Final não possui disparo de imprevistos
+
     const fallbackEvents: UnforeseenEvent[] = [
       {
         id: `u-1`,
@@ -660,7 +694,7 @@ export default function DashboardPage() {
         category: "Moradia",
         isPaid: false,
         consecutiveMonths: 1,
-        description: "Sua escolha de moradia definida no Mês 0 (RPG).",
+        description: "Sua escolha de moradia definida no começo.",
       },
       {
         id: `f2-m1`,
@@ -671,7 +705,7 @@ export default function DashboardPage() {
         category: "Alimentação",
         isPaid: false,
         consecutiveMonths: 1,
-        description: "Sua escolha de alimentação definida no Mês 0 (RPG).",
+        description: "Sua escolha de alimentação definida no começo.",
       },
       {
         id: `f3-m1`,
@@ -682,7 +716,7 @@ export default function DashboardPage() {
         category: "Transporte",
         isPaid: false,
         consecutiveMonths: 1,
-        description: "Sua escolha de transporte definida no Mês 0 (RPG).",
+        description: "Sua escolha de transporte definida no começo.",
       },
       {
         id: `f4-m1`,
@@ -693,7 +727,7 @@ export default function DashboardPage() {
         category: "Tecnologia",
         isPaid: false,
         consecutiveMonths: 1,
-        description: "Sua escolha de conectividade definida no Mês 0 (RPG).",
+        description: "Sua escolha de conectividade definida no começo.",
       },
     ];
 
@@ -774,7 +808,7 @@ export default function DashboardPage() {
           cost: newCost,
           isPaid: false,
           consecutiveMonths: nextConsecutive,
-          description: `Despesa não paga por ${prevConsecutive} mês(es). Inclui 8% de juros e penalidade exponencial ^1.5.`,
+          description: `Despesa não paga por ${prevConsecutive} mês(es). Inclui 8% de juros.`,
         };
       });
     }
@@ -791,6 +825,11 @@ export default function DashboardPage() {
     } else if (isFromMonthZero) {
       setNotification({
         message: `🚀 Mês 1 Iniciado! Suas escolhas do Mês 0 foram carregadas como despesas do mês.`,
+        type: "success",
+      });
+    } else if (nextMonth === TOTAL_MONTHS) {
+      setNotification({
+        message: `🎉 Bem-vindo ao Mês Final! Utilize suas economias acumuladas para conquistar suas Metas de Longo Prazo!`,
         type: "success",
       });
     } else {
@@ -810,7 +849,8 @@ export default function DashboardPage() {
     // Auto-transfer remaining balance to savings ONLY for Month 1+ transitions
     const remainingBalance = isFromMonthZero ? 0 : Math.max(0, curBalance);
     const newSavings = isFromMonthZero ? 0.0 : curSavings + remainingBalance;
-    const newBalance = MONTHLY_ALLOWANCE;
+    // No Bolsa Auxílio in the Final Month (Mês 7)!
+    const newBalance = nextMonth === TOTAL_MONTHS ? 0.0 : MONTHLY_ALLOWANCE;
 
     setSavings(newSavings);
     setBalance(newBalance);
@@ -2214,6 +2254,61 @@ export default function DashboardPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Month Time Expired Lock Overlay */}
+      {timeLeft <= 0 && currentMonth > 0 && currentMonth < TOTAL_MONTHS && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="glass-panel max-w-lg w-full p-8 rounded-3xl border-2 border-amber-500/50 glow-amber text-center space-y-5 relative">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center mx-auto shadow-lg animate-pulse">
+              <Clock className="w-8 h-8" />
+            </div>
+            <div>
+              <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold uppercase tracking-wider">
+                Mês {currentMonth} Encerrado
+              </span>
+              <h2 className="text-2xl font-black text-white pt-2">O Tempo do Mês Acabou!</h2>
+              <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                O tempo deste mês acabou! Todas as escolhas, pagamentos e compras agora só poderão ser realizadas no próximo mês. Aguarde o facilitador iniciar a próxima rodada no painel de controle.
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-slate-900/80 border border-white/10 text-xs text-amber-300 font-bold flex items-center justify-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+              <span>Aguardando o facilitador dar início ao próximo mês...</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Investment Redemption Modal in Final Month */}
+      {showInvestBonusModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="glass-panel max-w-lg w-full p-8 rounded-3xl border-2 border-emerald-500/50 glow-emerald text-center space-y-6 relative">
+            <div className="w-20 h-20 rounded-full bg-emerald-500/20 text-emerald-300 border-2 border-emerald-500/40 flex items-center justify-center mx-auto shadow-xl glow-emerald">
+              <Sparkles className="w-10 h-10 animate-bounce" />
+            </div>
+            <div>
+              <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold uppercase tracking-wider">
+                Disciplinado(a) no Planejamento Financeiro!
+              </span>
+              <h2 className="text-2xl font-black text-white pt-2">Parabéns pelo seu Investimento! 🎉</h2>
+              <p className="text-xs text-slate-300 mt-2 leading-relaxed">
+                Você aplicou <strong className="text-emerald-300">R$ {investedCapital.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> em investimentos ao longo da sua jornada! Seu capital rendeu juros de 2%/mês e agora está liberado <strong className="text-emerald-300">SEM IMPOSTOS</strong> para resgate e compra das suas Metas de Longo Prazo!
+              </p>
+            </div>
+            <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/30 text-xs text-emerald-200 space-y-1 text-left">
+              <p>• Valor Resgatado: <strong>R$ {investedCapital.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></p>
+              <p>• Bônus de Maturidade: <strong>+150 Pontos de Felicidade!</strong></p>
+            </div>
+            <button
+              onClick={handleClaimInvestmentBonus}
+              className="w-full py-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-sm shadow-xl glow-emerald transition-all flex items-center justify-center gap-2"
+            >
+              <span>Obrigado(a)</span>
+              <ArrowRight className="w-5 h-5" />
+            </button>
           </div>
         </div>
       )}

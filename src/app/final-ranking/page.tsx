@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Trophy, Medal, Award, ArrowLeft, Heart, PiggyBank, Sparkles, RefreshCw, Users } from "lucide-react";
+import { Trophy, Medal, Award, ArrowLeft, Heart, PiggyBank, Sparkles, RefreshCw, Users, TrendingUp } from "lucide-react";
 import Link from "next/link";
 
 interface GroupData {
   id: string;
   name: string;
   savings: number;
+  investments?: number;
   happinessPoints: number;
   achievedGoal?: string | null;
 }
@@ -21,12 +22,14 @@ export default function FinalRankingPage() {
       const res = await fetch("/api/groups");
       const data = await res.json();
       if (data.success && Array.isArray(data.groups)) {
-        // Sort groups by happinessPoints DESC, then savings DESC
+        // Sort groups by happinessPoints DESC, then total accumulated funds (savings + investments) DESC
         const sorted = [...data.groups].sort((a: any, b: any) => {
           if (b.happinessPoints !== a.happinessPoints) {
             return b.happinessPoints - a.happinessPoints;
           }
-          return b.savings - a.savings;
+          const totalA = (a.savings || 0) + (a.investments || 0);
+          const totalB = (b.savings || 0) + (b.investments || 0);
+          return totalB - totalA;
         });
         setGroups(sorted);
       }
@@ -48,8 +51,9 @@ export default function FinalRankingPage() {
     id: g.id,
     name: g.name,
     savings: g.savings || 0,
+    investments: g.investments || 0,
     points: g.happinessPoints || 0,
-    goal: g.achievedGoal || (g.savings > 0 ? "Reserva Financeira Acumulada 💰" : "Planejamento Concluído 🎯"),
+    goal: g.achievedGoal || (g.savings > 0 || (g.investments || 0) > 0 ? "Reserva Financeira Acumulada 💰" : "Planejamento Concluído 🎯"),
   }));
 
   const top3 = leaderboard.slice(0, 3);
@@ -88,9 +92,9 @@ export default function FinalRankingPage() {
           🏆
         </div>
 
-        <h1 className="text-3xl font-black text-white tracking-tight">Pódio de Felicidade & Poupança</h1>
+        <h1 className="text-3xl font-black text-white tracking-tight">Pódio de Felicidade & Investimento</h1>
         <p className="text-xs text-slate-300 max-w-md mx-auto">
-          Confira a pontuação final dos grupos após a conversão do saldo guardado em conquistas de vida!
+          Confira a pontuação final dos grupos após a conversão dos investimentos acumulados em conquistas de vida!
         </p>
 
         {loading && (
@@ -141,9 +145,16 @@ export default function FinalRankingPage() {
                   </div>
 
                   <h2 className="font-bold text-white text-base mb-1">{item.name}</h2>
-                  <div className="text-xs text-purple-300 font-semibold mb-3 flex items-center gap-1">
-                    <PiggyBank className="w-3.5 h-3.5" />
-                    <span>Poupança: R$ {item.savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                  
+                  <div className="text-xs text-emerald-300 font-bold mb-3 space-y-1 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
+                    <div className="flex items-center gap-1 text-emerald-400">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                      <span>Investimento Realizado: R$ {item.investments.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-purple-300 font-medium">
+                      <PiggyBank className="w-3.5 h-3.5" />
+                      <span>Poupança: R$ {item.savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                    </div>
                   </div>
                 </div>
 
@@ -180,12 +191,15 @@ export default function FinalRankingPage() {
                     </span>
                   </div>
                 </div>
-                <div className="text-right shrink-0">
+                <div className="text-right shrink-0 space-y-0.5">
                   <div className="text-amber-300 font-extrabold text-sm flex items-center justify-end gap-1">
                     <Heart className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
                     <span>{item.points} pts</span>
                   </div>
-                  <span className="text-xs text-slate-400 block mt-0.5">
+                  <span className="text-xs text-emerald-400 block font-semibold">
+                    Investimento: R$ {item.investments.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                  <span className="text-[11px] text-slate-400 block">
                     Poupança: R$ {item.savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </span>
                 </div>

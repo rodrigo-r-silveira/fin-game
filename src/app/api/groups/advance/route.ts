@@ -12,9 +12,9 @@ export async function POST() {
     let targetMonth = 1;
 
     for (const group of groups) {
-      const nextMonth = group.currentMonth < 6 ? group.currentMonth + 1 : 6;
+      const nextMonth = group.currentMonth < 7 ? group.currentMonth + 1 : 7;
       targetMonth = nextMonth;
-      const isFinished = nextMonth >= 6 && group.currentMonth === 6;
+      const isFinished = nextMonth >= 7 && group.currentMonth === 7;
 
       await prisma.group.update({
         where: { id: group.id },

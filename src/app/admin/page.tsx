@@ -464,9 +464,9 @@ export default function AdminPage() {
 
               <button
                 onClick={handleNextMonth}
-                disabled={!gameStarted || currentMonth >= 6}
+                disabled={!gameStarted || currentMonth >= 7}
                 className={`p-4 rounded-2xl border font-bold text-left transition-all flex flex-col justify-between h-28 ${
-                  gameStarted && currentMonth < 6
+                  gameStarted && currentMonth < 7
                     ? "bg-gradient-to-br from-purple-600 to-indigo-700 hover:from-purple-500 hover:to-indigo-600 text-white border-purple-500/40 shadow-xl glow-purple"
                     : "bg-slate-900 border-white/5 text-slate-500 cursor-not-allowed"
                 }`}
