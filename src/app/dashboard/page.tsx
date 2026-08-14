@@ -128,6 +128,7 @@ export default function DashboardPage() {
   }, []);
 
   const [lastRemoteTriggerTime, setLastRemoteTriggerTime] = useState<string | null>(null);
+  const hasInitializedFromStorageRef = useRef(false);
 
   // Load group info & Poll remote actions (Month advance & Admin triggers)
   useEffect(() => {
@@ -189,43 +190,59 @@ export default function DashboardPage() {
                   }
                 }
 
-                // Recover local fixed expenses if saved
-                const savedExpenses = localStorage.getItem(`finGame_fixedExpenses_${token}`);
-                if (savedExpenses) {
-                  try {
-                    setFixedExpenses(JSON.parse(savedExpenses));
-                  } catch (_) {}
-                }
+                // Initial State Recovery from LocalStorage (Only once on mount)
+                if (!hasInitializedFromStorageRef.current) {
+                  hasInitializedFromStorageRef.current = true;
 
-                // Recover chosen RPG base expenses if saved
-                const savedChosen = localStorage.getItem(`finGame_chosenBase_${token}`);
-                if (savedChosen) {
-                  try {
-                    setChosenBaseExpenses(JSON.parse(savedChosen));
-                  } catch (_) {}
-                }
+                  // Recover local fixed expenses if saved
+                  const savedExpenses = localStorage.getItem(`finGame_fixedExpenses_${token}`);
+                  if (savedExpenses) {
+                    try {
+                      setFixedExpenses(JSON.parse(savedExpenses));
+                    } catch (_) {}
+                  }
 
-                // Recover local investment state if saved
-                const savedInvested = localStorage.getItem(`finGame_investedCapital_${token}`);
-                if (savedInvested) {
-                  const val = parseFloat(savedInvested);
-                  if (!isNaN(val)) setInvestedCapital(val);
-                } else if (matched.investments !== undefined && matched.investments > 0 && currentMonthRef.current < TOTAL_MONTHS) {
-                  setInvestedCapital(matched.investments);
-                }
+                  // Recover chosen RPG base expenses if saved
+                  const savedChosen = localStorage.getItem(`finGame_chosenBase_${token}`);
+                  if (savedChosen) {
+                    try {
+                      setChosenBaseExpenses(JSON.parse(savedChosen));
+                    } catch (_) {}
+                  }
 
-                const savedPrincipal = localStorage.getItem(`finGame_principalInvested_${token}`);
-                if (savedPrincipal) {
-                  const val = parseFloat(savedPrincipal);
-                  if (!isNaN(val)) setPrincipalInvested(val);
-                }
+                  // Recover local investment state if saved
+                  const savedInvested = localStorage.getItem(`finGame_investedCapital_${token}`);
+                  if (savedInvested) {
+                    const val = parseFloat(savedInvested);
+                    if (!isNaN(val)) {
+                      setInvestedCapital(val);
+                      investedCapitalRef.current = val;
+                    }
+                  } else if (matched.investments !== undefined && matched.investments > 0) {
+                    setInvestedCapital(matched.investments);
+                    investedCapitalRef.current = matched.investments;
+                  }
 
-                const savedPenultimate = localStorage.getItem(`finGame_penultimateInvested_${token}`);
-                if (savedPenultimate) {
-                  const val = parseFloat(savedPenultimate);
-                  if (!isNaN(val)) setPenultimateInvested(val);
-                } else if (matched.investments !== undefined && matched.investments > 0) {
-                  setPenultimateInvested(matched.investments);
+                  const savedPrincipal = localStorage.getItem(`finGame_principalInvested_${token}`);
+                  if (savedPrincipal) {
+                    const val = parseFloat(savedPrincipal);
+                    if (!isNaN(val)) {
+                      setPrincipalInvested(val);
+                      principalInvestedRef.current = val;
+                    }
+                  }
+
+                  const savedPenultimate = localStorage.getItem(`finGame_penultimateInvested_${token}`);
+                  if (savedPenultimate) {
+                    const val = parseFloat(savedPenultimate);
+                    if (!isNaN(val)) {
+                      setPenultimateInvested(val);
+                      penultimateInvestedRef.current = val;
+                    }
+                  } else if (matched.investments !== undefined && matched.investments > 0) {
+                    setPenultimateInvested(matched.investments);
+                    penultimateInvestedRef.current = matched.investments;
+                  }
                 }
               }
             }
@@ -672,9 +689,34 @@ export default function DashboardPage() {
     const newPoints = hasUnpaidInRegularMonth ? Math.max(0, curPoints - totalPenalty) : curPoints;
     setHappinessPoints(newPoints);
 
+    // Apply 2% monthly yield to Invested Capital (CDB Fictício)
+    let updatedInvested = curInvested;
+    let yieldGained = 0;
+    if (curInvested > 0 && !isFromMonthZero) {
+      updatedInvested = Math.round(curInvested * 1.02 * 100) / 100;
+      yieldGained = Math.round((updatedInvested - curInvested) * 100) / 100;
+      setInvestedCapital(updatedInvested);
+      investedCapitalRef.current = updatedInvested;
+    }
+
+    if (updatedInvested > 0) {
+      setPenultimateInvested(updatedInvested);
+      penultimateInvestedRef.current = updatedInvested;
+    }
+
+    const token = typeof window !== "undefined" && (localStorage.getItem("finGame_groupToken") || new URLSearchParams(window.location.search).get("token"));
+    if (token) {
+      localStorage.setItem(`finGame_investedCapital_${token}`, updatedInvested.toString());
+      localStorage.setItem(`finGame_penultimateInvested_${token}`, updatedInvested.toString());
+    }
+
+    const yieldMsg = yieldGained > 0
+      ? ` 📈 Seu investimento rendeu +R$ ${yieldGained.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} (+2% CDB)!`
+      : "";
+
     if (hasUnpaidInRegularMonth) {
       setNotification({
-        message: `Entrando no Mês ${nextMonth}: Penalidade de -${totalPenalty} pts de Felicidade! ${curFixed.filter((e) => !e.isPaid).length} despesa(s) não paga(s) acumularam +8% de juros!`,
+        message: `Entrando no Mês ${nextMonth}: Penalidade de -${totalPenalty} pts de Felicidade! ${curFixed.filter((e) => !e.isPaid).length} despesa(s) não paga(s) acumularam +8% de juros!${yieldMsg}`,
         type: "error",
       });
     } else if (isFromMonthZero) {
@@ -689,21 +731,9 @@ export default function DashboardPage() {
       });
     } else {
       setNotification({
-        message: `Mês ${nextMonth} iniciado com sucesso! Sobra transferida para a Poupança. +Bolsa Auxílio recebida!`,
+        message: `Mês ${nextMonth} iniciado com sucesso! Sobra transferida para a Poupança. +Bolsa Auxílio recebida!${yieldMsg}`,
         type: "success",
       });
-    }
-
-    // Apply 2% monthly yield to Invested Capital (CDB Fictício)
-    let updatedInvested = curInvested;
-    if (curInvested > 0 && !isFromMonthZero) {
-      updatedInvested = Math.round(curInvested * 1.02 * 100) / 100;
-      setInvestedCapital(updatedInvested);
-    }
-
-    if (updatedInvested > 0) {
-      setPenultimateInvested(updatedInvested);
-      penultimateInvestedRef.current = updatedInvested;
     }
 
     // Reset bought temptations so players get fresh temptation purchase opportunities in each new month
@@ -921,16 +951,31 @@ export default function DashboardPage() {
       });
       return;
     }
-    const newBalance = balance - amount;
-    const newInvested = investedCapital + amount;
-    const newPrincipal = principalInvested + amount;
+    const newBalance = Math.round((balance - amount) * 100) / 100;
+    const newInvested = Math.round((investedCapital + amount) * 100) / 100;
+    const newPrincipal = Math.round((principalInvested + amount) * 100) / 100;
+
     setBalance(newBalance);
+    balanceRef.current = newBalance;
+
     setInvestedCapital(newInvested);
+    investedCapitalRef.current = newInvested;
+
     setPrincipalInvested(newPrincipal);
+    principalInvestedRef.current = newPrincipal;
+
     if (currentMonth <= 6) {
       setPenultimateInvested(newInvested);
       penultimateInvestedRef.current = newInvested;
     }
+
+    const token = typeof window !== "undefined" && (localStorage.getItem("finGame_groupToken") || new URLSearchParams(window.location.search).get("token"));
+    if (token) {
+      localStorage.setItem(`finGame_investedCapital_${token}`, newInvested.toString());
+      localStorage.setItem(`finGame_principalInvested_${token}`, newPrincipal.toString());
+      localStorage.setItem(`finGame_penultimateInvested_${token}`, newInvested.toString());
+    }
+
     syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth, undefined, newInvested);
     setNotification({
       message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} aplicados no CDB Fictício (+2% rendimento/mês)!`,
@@ -961,15 +1006,29 @@ export default function DashboardPage() {
 
     const newInvested = Math.max(0, Math.round((investedCapital - withdrawGrossAmount) * 100) / 100);
     const newPrincipal = Math.max(0, Math.round((principalInvested - redeemedPrincipal) * 100) / 100);
-    const newBalance = balance + netAmount;
+    const newBalance = Math.round((balance + netAmount) * 100) / 100;
 
     setBalance(newBalance);
+    balanceRef.current = newBalance;
+
     setInvestedCapital(newInvested);
+    investedCapitalRef.current = newInvested;
+
     setPrincipalInvested(newPrincipal);
+    principalInvestedRef.current = newPrincipal;
+
     if (currentMonth <= 6) {
       setPenultimateInvested(newInvested);
       penultimateInvestedRef.current = newInvested;
     }
+
+    const token = typeof window !== "undefined" && (localStorage.getItem("finGame_groupToken") || new URLSearchParams(window.location.search).get("token"));
+    if (token) {
+      localStorage.setItem(`finGame_investedCapital_${token}`, newInvested.toString());
+      localStorage.setItem(`finGame_principalInvested_${token}`, newPrincipal.toString());
+      localStorage.setItem(`finGame_penultimateInvested_${token}`, newInvested.toString());
+    }
+
     setShowEarlyWithdrawModal(false);
     syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth, undefined, newInvested);
 
