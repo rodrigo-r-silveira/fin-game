@@ -173,7 +173,26 @@ export default function DashboardPage() {
               const matched = data.groups.find((g: any) => g.qrCodeToken === token);
               if (matched) {
                 if (matched.isGameFinished) {
-                  router.push("/final-ranking");
+                  // Flush any higher local points to server before redirecting
+                  const curPts = happinessPointsRef.current;
+                  const curSav = savingsRef.current;
+                  const curInv = investedCapitalRef.current;
+                  if (curPts > matched.happinessPoints && token) {
+                    fetch("/api/groups", {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        qrCodeToken: token,
+                        happinessPoints: curPts,
+                        savings: curSav,
+                        investments: curInv,
+                        currentMonth: TOTAL_MONTHS,
+                      }),
+                    }).catch(() => {});
+                  }
+                  setTimeout(() => {
+                    router.push("/final-ranking");
+                  }, 400);
                   return;
                 }
                 if (!matched.isStarted) {
