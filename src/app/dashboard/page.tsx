@@ -242,52 +242,7 @@ export default function DashboardPage() {
   }, [router, currentMonth, lastRemoteTriggerTime]);
 
   // Dynamic fixed expenses list
-  const [fixedExpenses, setFixedExpenses] = useState<ExpenseItem[]>([
-    {
-      id: "f1",
-      title: "Aluguel & Condomínio",
-      cost: 750.0,
-      happinessPoints: 10,
-      type: "FIXED",
-      category: "Moradia",
-      isPaid: false,
-      consecutiveMonths: 1,
-      description: "Despesa fixa obrigatória de moradia para o mês.",
-    },
-    {
-      id: "f2",
-      title: "Supermercado & Alimentação",
-      cost: 500.0,
-      happinessPoints: 10,
-      type: "FIXED",
-      category: "Alimentação",
-      isPaid: false,
-      consecutiveMonths: 1,
-      description: "Compras essenciais para refeições diárias.",
-    },
-    {
-      id: "f3",
-      title: "Transporte & Deslocamento",
-      cost: 150.0,
-      happinessPoints: 5,
-      type: "FIXED",
-      category: "Transporte",
-      isPaid: false,
-      consecutiveMonths: 1,
-      description: "Gastos com transporte diário e passe.",
-    },
-    {
-      id: "f4",
-      title: "Internet & Celular",
-      cost: 110.0,
-      happinessPoints: 10,
-      type: "FIXED",
-      category: "Tecnologia",
-      isPaid: false,
-      consecutiveMonths: 1,
-      description: "Plano de internet rápida para estudos e conexão.",
-    },
-  ]);
+  const [fixedExpenses, setFixedExpenses] = useState<ExpenseItem[]>([]);
 
   // Fresh refs to prevent stale closure issues in asynchronous callbacks (such as handleMonthEnd)
   const currentMonthRef = useRef(currentMonth);
@@ -339,98 +294,23 @@ export default function DashboardPage() {
     }
   }, [investedCapital, principalInvested, penultimateInvested]);
 
-  // Dynamic single-use temptations catalog loaded directly from admin catalog (/api/catalog)
+  // Dynamic single-use temptations catalog loaded directly from database (/api/catalog)
   const temptations: ExpenseItem[] = useMemo(() => {
     const adminTemptations = catalogItems.filter((i) => i.type === "TEMPTATION");
-    const source: ExpenseItem[] = adminTemptations.length > 0
-      ? adminTemptations.map((i) => ({
-          id: i.id,
-          title: i.title,
-          cost: i.cost,
-          happinessPoints: i.happinessPoints,
-          type: "TEMPTATION" as const,
-          category: i.category || "Lazer",
-          description: i.description || "Tentação de gasto cadastrada no catálogo administrativo.",
-        }))
-      : [
-          {
-            id: "t1",
-            title: "Ingresso de Show no Fim de Semana",
-            cost: 180.0,
-            happinessPoints: 45,
-            type: "TEMPTATION" as const,
-            category: "Lazer",
-            description: "Shows imperdíveis com a galera no sábado à noite! (Uso único)",
-          },
-          {
-            id: "t2",
-            title: "Jantar Especial em Restaurante Chique",
-            cost: 140.0,
-            happinessPoints: 35,
-            type: "TEMPTATION" as const,
-            category: "Gastronomia",
-            description: "Experiência culinária única para relaxar na sexta. (Uso único)",
-          },
-          {
-            id: "t3",
-            title: "Fone de Ouvido Noise Cancelling",
-            cost: 320.0,
-            happinessPoints: 70,
-            type: "TEMPTATION" as const,
-            category: "Gadgets",
-            description: "Foco total nos estudos e música sem ruídos. (Uso único)",
-          },
-          {
-            id: "t4",
-            title: "Passeio de Bate-Volta na Praia",
-            cost: 120.0,
-            happinessPoints: 30,
-            type: "TEMPTATION" as const,
-            category: "Viagem",
-            description: "Sol, mar e recarga de energias com os amigos. (Uso único)",
-          },
-          {
-            id: "t5",
-            title: "Assinatura VIP de Plataforma de Games",
-            cost: 65.0,
-            happinessPoints: 20,
-            type: "TEMPTATION" as const,
-            category: "Entretenimento",
-            description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
-          },
-          {
-            id: "t6",
-            title: "Combo de Fast Food no Meio da Semana",
-            cost: 55.0,
-            happinessPoints: 15,
-            type: "TEMPTATION" as const,
-            category: "Gastronomia",
-            description: "Lanche rápido e saboroso para descontrair.",
-          },
-          {
-            id: "t7",
-            title: "Camisa Oficial do Time de Futebol",
-            cost: 250.0,
-            happinessPoints: 50,
-            type: "TEMPTATION" as const,
-            category: "Lazer",
-            description: "Vestir as cores do seu time favorito.",
-          },
-          {
-            id: "t8",
-            title: "Ingresso VIP para Cinema 4D",
-            cost: 95.0,
-            happinessPoints: 25,
-            type: "TEMPTATION" as const,
-            category: "Entretenimento",
-            description: "Sessão com pipoca grande e cadeira reclinável.",
-          },
-        ];
+    const source: ExpenseItem[] = adminTemptations.map((i) => ({
+      id: i.id,
+      title: i.title,
+      cost: i.cost,
+      happinessPoints: i.happinessPoints,
+      type: "TEMPTATION" as const,
+      category: i.category || "Lazer",
+      description: i.description || "Tentação de gasto cadastrada no catálogo administrativo.",
+    }));
 
     // Exclude any temptations already bought this month
     const unbought = source.filter((t) => !boughtTemptationIds.includes(t.id));
 
-    // Proper Linear Congruential PRNG deterministic shuffle per month & group name
+    // Linear Congruential PRNG deterministic shuffle per month & group name
     let seed = ((currentMonth + 1) * 997 + (groupName ? groupName.length * 31 : 17)) >>> 0;
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -443,55 +323,21 @@ export default function DashboardPage() {
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
-    // Maximum 6 temptations per month
-    return shuffled.slice(0, 6);
+    return shuffled;
   }, [catalogItems, boughtTemptationIds, currentMonth, groupName]);
 
-  // Dynamic final month goals (Recompensas Finais) loaded directly from admin catalog (/api/catalog)
+  // Dynamic final month goals (Recompensas Finais) loaded directly from database (/api/catalog)
   const longTermGoals: ExpenseItem[] = useMemo(() => {
     const adminGoals = catalogItems.filter((i) => i.type === "LONG_TERM_GOAL");
-    if (adminGoals.length > 0) {
-      return adminGoals.map((i) => ({
-        id: i.id,
-        title: i.title,
-        cost: i.cost,
-        happinessPoints: i.happinessPoints,
-        type: "LONG_TERM_GOAL" as const,
-        category: i.category || "Recompensa Final",
-        description: i.description || "Recompensa final de grande impacto na felicidade.",
-      }));
-    }
-
-    // Fallback default goals if catalog is empty
-    return [
-      {
-        id: "g1",
-        title: "Viagem dos Sonhos (Mochilão Europa)",
-        cost: 3200.0,
-        happinessPoints: 300,
-        type: "LONG_TERM_GOAL",
-        category: "Recompensa Final",
-        description: "Incrível viagem com tudo pago para celebrar o fim da jornada com chave de ouro!",
-      },
-      {
-        id: "g2",
-        title: "Notebook Gamer / Workstation Pro",
-        cost: 2400.0,
-        happinessPoints: 220,
-        type: "LONG_TERM_GOAL",
-        category: "Recompensa Final",
-        description: "Equipamento de última geração para sua carreira profissional e lazer.",
-      },
-      {
-        id: "g3",
-        title: "Reserva de Emergência & Fundo de Liberdade",
-        cost: 1500.0,
-        happinessPoints: 150,
-        type: "LONG_TERM_GOAL",
-        category: "Recompensa Final",
-        description: "Tranquilidade absoluta e segurança financeira para o futuro.",
-      },
-    ];
+    return adminGoals.map((i) => ({
+      id: i.id,
+      title: i.title,
+      cost: i.cost,
+      happinessPoints: i.happinessPoints,
+      type: "LONG_TERM_GOAL" as const,
+      category: i.category || "Recompensa Final",
+      description: i.description || "Recompensa final de grande impacto na felicidade.",
+    }));
   }, [catalogItems]);
 
   // Unforeseen modal state
@@ -589,75 +435,17 @@ export default function DashboardPage() {
   // Trigger Imprevisto at random time between 2 to 3 minutes (Shuffled per group)
   const triggerUnforeseenEvent = () => {
     if (currentMonth === TOTAL_MONTHS) return; // Mês Final não possui disparo de imprevistos
+    if (!catalogUnforeseens || catalogUnforeseens.length === 0) return;
 
-    const fallbackEvents: UnforeseenEvent[] = [
-      {
-        id: `u-1`,
-        title: "📱 Tela do Celular Quebrou!",
-        description: "Seu celular caiu no chão. O reparo imediato evita transtornos nos estudos e trabalho.",
-        costToFix: 260.0,
-        penaltyIfNotFixedPoints: 40,
-        restoredPointsIfFixed: 10,
-        triggeredMonth: currentMonth,
-      },
-      {
-        id: `u-2`,
-        title: "🦷 Emergência Odontológica",
-        description: "Consulta de dor de dente urgente no meio do mês! Precisa de medicação imediata.",
-        costToFix: 220.0,
-        penaltyIfNotFixedPoints: 35,
-        restoredPointsIfFixed: 5,
-        triggeredMonth: currentMonth,
-      },
-      {
-        id: `u-3`,
-        title: "💻 Manutenção do Notebook da Faculdade",
-        description: "Falha na memória RAM antes da entrega de um projeto importante.",
-        costToFix: 310.0,
-        penaltyIfNotFixedPoints: 50,
-        restoredPointsIfFixed: 15,
-        triggeredMonth: currentMonth,
-      },
-      {
-        id: `u-4`,
-        title: "🚗 Manutenção Urgente no Veículo",
-        description: "Pneu furado e alinhamento necessário para continuar se deslocando com segurança.",
-        costToFix: 280.0,
-        penaltyIfNotFixedPoints: 45,
-        restoredPointsIfFixed: 10,
-        triggeredMonth: currentMonth,
-      },
-      {
-        id: `u-5`,
-        title: "⚡ Multa por Conta de Luz Atrasada",
-        description: "Atraso no pagamento da energia gerou taxa de religação e juros de mora.",
-        costToFix: 190.0,
-        penaltyIfNotFixedPoints: 30,
-        restoredPointsIfFixed: 5,
-        triggeredMonth: currentMonth,
-      },
-      {
-        id: `u-6`,
-        title: "👟 Tênis do Dia a Dia Rasgou",
-        description: "O calçado principal estragou na chuva. Necessário comprar um par substituto urgente.",
-        costToFix: 170.0,
-        penaltyIfNotFixedPoints: 25,
-        restoredPointsIfFixed: 5,
-        triggeredMonth: currentMonth,
-      },
-    ];
-
-    const sourceEvents = catalogUnforeseens.length > 0
-      ? catalogUnforeseens.map((u) => ({
-          id: u.id,
-          title: u.title,
-          description: u.description,
-          costToFix: u.costToFix,
-          penaltyIfNotFixedPoints: u.penaltyIfNotFixedPoints,
-          restoredPointsIfFixed: u.restoredPointsIfFixed,
-          triggeredMonth: currentMonth,
-        }))
-      : fallbackEvents;
+    const sourceEvents: UnforeseenEvent[] = catalogUnforeseens.map((u) => ({
+      id: u.id,
+      title: u.title,
+      description: u.description,
+      costToFix: u.costToFix,
+      penaltyIfNotFixedPoints: u.penaltyIfNotFixedPoints,
+      restoredPointsIfFixed: u.restoredPointsIfFixed,
+      triggeredMonth: currentMonth,
+    }));
 
     // Deterministic shuffle based on group token so every group gets all events in different order
     const groupToken = (typeof window !== "undefined" && localStorage.getItem("finGame_groupToken")) || groupName;
@@ -676,7 +464,7 @@ export default function DashboardPage() {
     const selectedIndex = (currentMonth - 1) % shuffled.length;
     const selected = shuffled[selectedIndex];
 
-    if (!resolvedUnforeseens.includes(selected.id)) {
+    if (selected && !resolvedUnforeseens.includes(selected.id)) {
       setActiveUnforeseen(selected);
       setModalCountdown(30); // 30s decision countdown
     }
@@ -1356,17 +1144,10 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">1. Moradia & Habitação</h3>
             </div>
             <div className="space-y-2">
-              {(
-                catalogItems.filter((i) => i.isRPGChoice && i.category === "Moradia").length > 0
-                  ? catalogItems
-                      .filter((i) => i.isRPGChoice && i.category === "Moradia")
-                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
-                  : [
-                      { title: "Quarto Compartilhado", cost: 500, points: 5, desc: "Custo baixo, pouca privacidade." },
-                      { title: "Kitnet Própria", cost: 750, points: 10, desc: "Espaço independente e confortável." },
-                      { title: "Apartamento Completo", cost: 1100, points: 20, desc: "Alto conforto, condomínio e infraestrutura." },
-                    ]
-              ).map((opt) => (
+              {catalogItems
+                .filter((i) => i.isRPGChoice && i.category === "Moradia")
+                .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                .map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, housing: opt }))}
@@ -1396,17 +1177,10 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">2. Alimentação & Gastronomia</h3>
             </div>
             <div className="space-y-2">
-              {(
-                catalogItems.filter((i) => i.isRPGChoice && i.category === "Alimentação").length > 0
-                  ? catalogItems
-                      .filter((i) => i.isRPGChoice && i.category === "Alimentação")
-                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
-                  : [
-                      { title: "Marmita & Básico", cost: 350, points: 5, desc: "Refeições essenciais preparadas em casa." },
-                      { title: "Supermercado Completo", cost: 500, points: 10, desc: "Boa variedade de alimentos diários." },
-                      { title: "Alimentação Gourmet", cost: 700, points: 20, desc: "Ingredientes nobres e delivery nos fins de semana." },
-                    ]
-              ).map((opt) => (
+              {catalogItems
+                .filter((i) => i.isRPGChoice && i.category === "Alimentação")
+                .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                .map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, food: opt }))}
@@ -1436,16 +1210,10 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">3. Transporte & Mobilidade</h3>
             </div>
             <div className="space-y-2">
-              {(
-                catalogItems.filter((i) => i.isRPGChoice && i.category === "Transporte").length > 0
-                  ? catalogItems
-                      .filter((i) => i.isRPGChoice && i.category === "Transporte")
-                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
-                  : [
-                      { title: "Transporte Público", cost: 120, points: 5, desc: "Ônibus e metrô no dia a dia." },
-                      { title: "Passe Livre + Carona/App", cost: 200, points: 10, desc: "Agilidade extra para se locomover." },
-                    ]
-              ).map((opt) => (
+              {catalogItems
+                .filter((i) => i.isRPGChoice && i.category === "Transporte")
+                .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                .map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, transport: opt }))}
@@ -1475,16 +1243,10 @@ export default function DashboardPage() {
               <h3 className="font-bold text-white text-sm">4. Conectividade & Tecnologia</h3>
             </div>
             <div className="space-y-2">
-              {(
-                catalogItems.filter((i) => i.isRPGChoice && i.category === "Tecnologia").length > 0
-                  ? catalogItems
-                      .filter((i) => i.isRPGChoice && i.category === "Tecnologia")
-                      .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
-                  : [
-                      { title: "Internet Básica", cost: 90, points: 5, desc: "Navegação essencial para estudos." },
-                      { title: "Fibra + Streamings VIP", cost: 150, points: 15, desc: "Conexão ultra-rápida e entretenimento." },
-                    ]
-              ).map((opt) => (
+              {catalogItems
+                .filter((i) => i.isRPGChoice && i.category === "Tecnologia")
+                .map((i) => ({ title: i.title, cost: i.cost, points: i.happinessPoints, desc: i.description }))
+                .map((opt) => (
                 <button
                   key={opt.title}
                   onClick={() => setRpgChoices((prev) => ({ ...prev, tech: opt }))}
