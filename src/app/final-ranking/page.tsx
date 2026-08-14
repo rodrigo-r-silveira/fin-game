@@ -149,7 +149,7 @@ export default function FinalRankingPage() {
                   <div className="text-xs text-emerald-300 font-bold mb-3 space-y-1 bg-slate-950/60 p-2.5 rounded-xl border border-white/5">
                     <div className="flex items-center gap-1 text-emerald-400">
                       <TrendingUp className="w-3.5 h-3.5" />
-                      <span>Investimento Realizado: R$ {item.investments.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                      <span>Investimento (até Mês 6): R$ {item.investments.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div className="flex items-center gap-1 text-purple-300 font-medium">
                       <PiggyBank className="w-3.5 h-3.5" />
@@ -197,7 +197,7 @@ export default function FinalRankingPage() {
                     <span>{item.points} pts</span>
                   </div>
                   <span className="text-xs text-emerald-400 block font-semibold">
-                    Investimento: R$ {item.investments.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    Investimento (até Mês 6): R$ {item.investments.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                   </span>
                   <span className="text-[11px] text-slate-400 block">
                     Poupança: R$ {item.savings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}

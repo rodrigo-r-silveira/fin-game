@@ -139,7 +139,7 @@ const DEFAULT_CATALOG = [
     isRPGChoice: false,
   },
 
-  // Feed de Tentações (Uso Único)
+  // Feed de Tentações (8 Itens no Catálogo Padrão)
   {
     title: "Ingresso de Show no Fim de Semana",
     cost: 180.0,
@@ -183,6 +183,33 @@ const DEFAULT_CATALOG = [
     type: "TEMPTATION" as const,
     category: "Entretenimento",
     description: "Acesso ilimitado aos jogos da temporada. (Uso único)",
+    isRPGChoice: false,
+  },
+  {
+    title: "Combo de Fast Food no Meio da Semana",
+    cost: 55.0,
+    happinessPoints: 15,
+    type: "TEMPTATION" as const,
+    category: "Gastronomia",
+    description: "Lanche rápido e saboroso para descontrair.",
+    isRPGChoice: false,
+  },
+  {
+    title: "Camisa Oficial do Time de Futebol",
+    cost: 250.0,
+    happinessPoints: 50,
+    type: "TEMPTATION" as const,
+    category: "Lazer",
+    description: "Vestir as cores do seu time favorito.",
+    isRPGChoice: false,
+  },
+  {
+    title: "Ingresso VIP para Cinema 4D",
+    cost: 95.0,
+    happinessPoints: 25,
+    type: "TEMPTATION" as const,
+    category: "Entretenimento",
+    description: "Sessão com pipoca grande e cadeira reclinável.",
     isRPGChoice: false,
   },
 
@@ -277,20 +304,18 @@ export async function GET(req: Request) {
     let rpgCount = await prisma.expenseOption.count({ where: { isRPGChoice: true } });
     let uCount = await prisma.unforeseenEvent.count();
 
-    // Auto-seed ExpenseOption if empty
-    if (count === 0 || rpgCount === 0) {
-      for (const item of DEFAULT_CATALOG) {
-        const existing = await prisma.expenseOption.findFirst({
-          where: { title: item.title },
+    // Auto-seed missing ExpenseOption items from DEFAULT_CATALOG
+    for (const item of DEFAULT_CATALOG) {
+      const existing = await prisma.expenseOption.findFirst({
+        where: { title: item.title },
+      });
+      if (!existing) {
+        await prisma.expenseOption.create({ data: item });
+      } else if (!existing.isRPGChoice && item.isRPGChoice) {
+        await prisma.expenseOption.update({
+          where: { id: existing.id },
+          data: { isRPGChoice: true },
         });
-        if (!existing) {
-          await prisma.expenseOption.create({ data: item });
-        } else if (!existing.isRPGChoice && item.isRPGChoice) {
-          await prisma.expenseOption.update({
-            where: { id: existing.id },
-            data: { isRPGChoice: true },
-          });
-        }
       }
     }
 

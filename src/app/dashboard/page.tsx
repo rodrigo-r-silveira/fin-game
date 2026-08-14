@@ -65,11 +65,14 @@ export default function DashboardPage() {
   const [balance, setBalance] = useState<number>(MONTHLY_ALLOWANCE);
   const [savings, setSavings] = useState<number>(0.0);
   const [investedCapital, setInvestedCapital] = useState<number>(0.0); // Investimentos Fictícios (CDB)
+  const [principalInvested, setPrincipalInvested] = useState<number>(0.0); // Capital principal aportado
+  const [penultimateInvested, setPenultimateInvested] = useState<number>(0.0); // Investimento acumulado até o Mês 6 para o Ranking Final
   const [happinessPoints, setHappinessPoints] = useState<number>(100);
   const [groupName, setGroupName] = useState<string>("Grupo Inovadores FinTech");
 
-  // Investment redemption modal in final month
+  // Investment redemption modal in final month & early withdraw modal
   const [showInvestBonusModal, setShowInvestBonusModal] = useState<boolean>(false);
+  const [showEarlyWithdrawModal, setShowEarlyWithdrawModal] = useState<boolean>(false);
   const [hasClaimedInvestBonus, setHasClaimedInvestBonus] = useState<boolean>(false);
 
   // Single-use temptations tracking
@@ -97,6 +100,7 @@ export default function DashboardPage() {
   const [depositAmountInput, setDepositAmountInput] = useState<string>("");
   const [withdrawAmountInput, setWithdrawAmountInput] = useState<string>("");
   const [investAmountInput, setInvestAmountInput] = useState<string>("");
+  const [earlyWithdrawAmountInput, setEarlyWithdrawAmountInput] = useState<string>("");
 
   // RPG Month 0 character choices state
   const [rpgChoices, setRpgChoices] = useState<{
@@ -200,6 +204,29 @@ export default function DashboardPage() {
                     setChosenBaseExpenses(JSON.parse(savedChosen));
                   } catch (_) {}
                 }
+
+                // Recover local investment state if saved
+                const savedInvested = localStorage.getItem(`finGame_investedCapital_${token}`);
+                if (savedInvested) {
+                  const val = parseFloat(savedInvested);
+                  if (!isNaN(val)) setInvestedCapital(val);
+                } else if (matched.investments !== undefined && matched.investments > 0 && currentMonthRef.current < TOTAL_MONTHS) {
+                  setInvestedCapital(matched.investments);
+                }
+
+                const savedPrincipal = localStorage.getItem(`finGame_principalInvested_${token}`);
+                if (savedPrincipal) {
+                  const val = parseFloat(savedPrincipal);
+                  if (!isNaN(val)) setPrincipalInvested(val);
+                }
+
+                const savedPenultimate = localStorage.getItem(`finGame_penultimateInvested_${token}`);
+                if (savedPenultimate) {
+                  const val = parseFloat(savedPenultimate);
+                  if (!isNaN(val)) setPenultimateInvested(val);
+                } else if (matched.investments !== undefined && matched.investments > 0) {
+                  setPenultimateInvested(matched.investments);
+                }
               }
             }
           })
@@ -284,6 +311,12 @@ export default function DashboardPage() {
   const investedCapitalRef = useRef(investedCapital);
   investedCapitalRef.current = investedCapital;
 
+  const principalInvestedRef = useRef(principalInvested);
+  principalInvestedRef.current = principalInvested;
+
+  const penultimateInvestedRef = useRef(penultimateInvested);
+  penultimateInvestedRef.current = penultimateInvested;
+
   // Persist fixedExpenses locally whenever changed
   useEffect(() => {
     if (typeof window !== "undefined" && fixedExpenses.length > 0) {
@@ -293,6 +326,18 @@ export default function DashboardPage() {
       }
     }
   }, [fixedExpenses]);
+
+  // Persist investment metrics locally whenever changed
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const token = localStorage.getItem("finGame_groupToken");
+      if (token) {
+        localStorage.setItem(`finGame_investedCapital_${token}`, investedCapital.toString());
+        localStorage.setItem(`finGame_principalInvested_${token}`, principalInvested.toString());
+        localStorage.setItem(`finGame_penultimateInvested_${token}`, penultimateInvested.toString());
+      }
+    }
+  }, [investedCapital, principalInvested, penultimateInvested]);
 
   // Dynamic single-use temptations catalog loaded directly from admin catalog (/api/catalog)
   const temptations: ExpenseItem[] = useMemo(() => {
@@ -382,14 +427,19 @@ export default function DashboardPage() {
           },
         ];
 
-    // Exclude any temptations already bought
+    // Exclude any temptations already bought this month
     const unbought = source.filter((t) => !boughtTemptationIds.includes(t.id));
 
-    // Pseudo-random deterministic shuffle per month & group name
-    const seed = currentMonth * 37 + (groupName ? groupName.length * 13 : 7);
+    // Proper Linear Congruential PRNG deterministic shuffle per month & group name
+    let seed = ((currentMonth + 1) * 997 + (groupName ? groupName.length * 31 : 17)) >>> 0;
+    const random = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return (seed & 0xfffffff) / 0x10000000;
+    };
+
     const shuffled = [...unbought];
     for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.abs((seed * (i + 1)) % (i + 1));
+      const j = Math.floor(random() * (i + 1));
       [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
     }
 
@@ -473,10 +523,12 @@ export default function DashboardPage() {
     setSavings(newSavings);
     setHappinessPoints(newPoints);
     setInvestedCapital(0.0);
+    setPrincipalInvested(0.0);
     setHasClaimedInvestBonus(true);
     setShowInvestBonusModal(false);
 
-    syncGroupMetrics(balance, newSavings, newPoints, TOTAL_MONTHS);
+    // Keep penultimateInvested for ranking display
+    syncGroupMetrics(balance, newSavings, newPoints, TOTAL_MONTHS, undefined, penultimateInvestedRef.current);
 
     setNotification({
       message: `🎉 R$ ${redeemedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados do investimento +150 pts de Felicidade bônus!`,
@@ -631,11 +683,25 @@ export default function DashboardPage() {
   };
 
   // Sync group metrics with backend API
-  const syncGroupMetrics = (newBalance: number, newSavings: number, newPoints: number, newMonth: number, achievedGoal?: string) => {
+  const syncGroupMetrics = (
+    newBalance: number,
+    newSavings: number,
+    newPoints: number,
+    newMonth: number,
+    achievedGoal?: string,
+    investmentsVal?: number
+  ) => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const token = params.get("token") || localStorage.getItem("finGame_groupToken");
       if (token) {
+        const finalInvestments =
+          typeof investmentsVal === "number"
+            ? investmentsVal
+            : newMonth >= TOTAL_MONTHS
+            ? penultimateInvestedRef.current
+            : investedCapitalRef.current;
+
         fetch("/api/groups", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -643,6 +709,7 @@ export default function DashboardPage() {
             qrCodeToken: token,
             balance: newBalance,
             savings: newSavings,
+            investments: finalInvestments,
             happinessPoints: newPoints,
             currentMonth: newMonth,
             ...(achievedGoal && { achievedGoal }),
@@ -846,6 +913,14 @@ export default function DashboardPage() {
       setInvestedCapital(updatedInvested);
     }
 
+    if (updatedInvested > 0) {
+      setPenultimateInvested(updatedInvested);
+      penultimateInvestedRef.current = updatedInvested;
+    }
+
+    // Reset bought temptations so players get fresh temptation purchase opportunities in each new month
+    setBoughtTemptationIds([]);
+
     // Auto-transfer remaining balance to savings ONLY for Month 1+ transitions
     const remainingBalance = isFromMonthZero ? 0 : Math.max(0, curBalance);
     const newSavings = isFromMonthZero ? 0.0 : curSavings + remainingBalance;
@@ -879,7 +954,14 @@ export default function DashboardPage() {
         localStorage.setItem(`finGame_fixedExpenses_${token}`, JSON.stringify(finalFixedList));
       }
 
-      syncGroupMetrics(newBalance, newSavings, newPoints, nextMonth);
+      syncGroupMetrics(
+        newBalance,
+        newSavings,
+        newPoints,
+        nextMonth,
+        undefined,
+        nextMonth >= TOTAL_MONTHS ? penultimateInvestedRef.current : updatedInvested
+      );
     } else {
       // FINAL MONTH (Mês 6 Vencimento dos Investimentos!)
       let finalBonus = 0;
@@ -1053,30 +1135,62 @@ export default function DashboardPage() {
     }
     const newBalance = balance - amount;
     const newInvested = investedCapital + amount;
+    const newPrincipal = principalInvested + amount;
     setBalance(newBalance);
     setInvestedCapital(newInvested);
-    syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth);
+    setPrincipalInvested(newPrincipal);
+    if (currentMonth <= 6) {
+      setPenultimateInvested(newInvested);
+      penultimateInvestedRef.current = newInvested;
+    }
+    syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth, undefined, newInvested);
     setNotification({
       message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} aplicados no CDB Fictício (+2% rendimento/mês)!`,
       type: "success",
     });
   };
 
-  // Action: Early Withdraw from Investment (22.5% Tax Penalty before Month 6)
-  const handleEarlyWithdrawInvestment = () => {
-    if (investedCapital <= 0) return;
+  // Action: Confirm Early Withdraw from Investment (Full or Partial, 22.5% IR strictly on proportional yield)
+  const handleConfirmEarlyWithdraw = (withdrawGrossAmount: number) => {
+    if (investedCapital <= 0 || withdrawGrossAmount <= 0) return;
+    if (withdrawGrossAmount > investedCapital) {
+      setNotification({
+        message: "Valor de resgate não pode ser maior que o saldo investido!",
+        type: "warning",
+      });
+      return;
+    }
 
-    // 22.5% Income Tax penalty for withdrawing before final maturity
-    const taxAmount = Math.round(investedCapital * 0.225 * 100) / 100;
-    const netAmount = Math.round((investedCapital - taxAmount) * 100) / 100;
+    const totalYield = Math.max(0, investedCapital - principalInvested);
+    // Calculate proportional yield and principal being redeemed
+    const yieldRatio = investedCapital > 0 ? totalYield / investedCapital : 0;
+    const redeemedYield = Math.round(withdrawGrossAmount * yieldRatio * 100) / 100;
+    const redeemedPrincipal = Math.max(0, Math.round((withdrawGrossAmount - redeemedYield) * 100) / 100);
 
+    // 22.5% IR Tax strictly on the redeemed yield
+    const taxAmount = Math.round(redeemedYield * 0.225 * 100) / 100;
+    const netAmount = Math.round((withdrawGrossAmount - taxAmount) * 100) / 100;
+
+    const newInvested = Math.max(0, Math.round((investedCapital - withdrawGrossAmount) * 100) / 100);
+    const newPrincipal = Math.max(0, Math.round((principalInvested - redeemedPrincipal) * 100) / 100);
     const newBalance = balance + netAmount;
+
     setBalance(newBalance);
-    setInvestedCapital(0);
-    syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth);
+    setInvestedCapital(newInvested);
+    setPrincipalInvested(newPrincipal);
+    if (currentMonth <= 6) {
+      setPenultimateInvested(newInvested);
+      penultimateInvestedRef.current = newInvested;
+    }
+    setShowEarlyWithdrawModal(false);
+    syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth, undefined, newInvested);
+
+    const taxMsg = taxAmount > 0
+      ? ` (R$ ${taxAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} pagos em IR de 22,5% sobre o rendimento de R$ ${redeemedYield.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})`
+      : "";
 
     setNotification({
-      message: `⚠️ Resgate Antecipado: R$ ${taxAmount.toFixed(2)} pagos em Imposto de Renda (22,5%). R$ ${netAmount.toFixed(2)} devolvidos ao saldo.`,
+      message: `⚠️ Resgate Antecipado Concluído: R$ ${netAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} creditados ao saldo!${taxMsg}`,
       type: "warning",
     });
   };
@@ -1587,9 +1701,12 @@ export default function DashboardPage() {
               </button>
               {investedCapital > 0 && currentMonth < TOTAL_MONTHS && (
                 <button
-                  onClick={handleEarlyWithdrawInvestment}
-                  className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-semibold text-[10px]"
-                  title="Resgate antecipado com 22,5% de Imposto de Renda"
+                  onClick={() => {
+                    setEarlyWithdrawAmountInput(investedCapital > 0 ? investedCapital.toString() : "");
+                    setShowEarlyWithdrawModal(true);
+                  }}
+                  className="px-2 py-0.5 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-semibold text-[10px] transition-colors"
+                  title="Resgate antecipado com 22,5% de IR sobre os rendimentos"
                 >
                   Saída (-22,5% IR)
                 </button>
@@ -2253,6 +2370,170 @@ export default function DashboardPage() {
                   <span>Confirmar Aplicação</span>
                 </button>
               </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Early Withdraw Investment Modal (-22,5% IR sobre rendimentos) */}
+      {showEarlyWithdrawModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-lg glass-panel p-6 rounded-3xl border border-rose-500/40 space-y-4 shadow-2xl glow-rose">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+                <h3 className="text-base font-bold text-white">Resgate Antecipado de Investimento</h3>
+              </div>
+              <button
+                onClick={() => setShowEarlyWithdrawModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 space-y-1">
+              <span className="font-bold flex items-center gap-1 text-amber-300">
+                <AlertTriangle className="w-3.5 h-3.5" /> Atenção ao Resgate Antes do Vencimento:
+              </span>
+              <p>
+                Ao resgatar antes do Mês Final (Mês 7), incide a alíquota regressiva de <strong>22,5% de Imposto de Renda (IR)</strong> calculada <strong>exclusivamente sobre o rendimento acumulado</strong>. O seu capital principal investido é integralmente preservado!
+              </p>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const val = parseFloat(earlyWithdrawAmountInput);
+                if (isNaN(val) || val <= 0) {
+                  setNotification({ message: "Digite um valor válido para resgatar!", type: "warning" });
+                  return;
+                }
+                if (val > investedCapital) {
+                  setNotification({ message: "Valor não pode ser maior que o saldo investido!", type: "warning" });
+                  return;
+                }
+                handleConfirmEarlyWithdraw(val);
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">Valor a resgatar do Investimento (R$):</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0.01"
+                  max={investedCapital}
+                  value={earlyWithdrawAmountInput}
+                  onChange={(e) => setEarlyWithdrawAmountInput(e.target.value)}
+                  placeholder="0,00"
+                  required
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/15 text-white text-sm font-extrabold focus:outline-none focus:border-rose-500 font-mono"
+                />
+              </div>
+
+              {/* Quick Preset Buttons */}
+              <div className="space-y-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold block">Valores Rápidos:</span>
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  {[50, 100, 200, 500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setEarlyWithdrawAmountInput(Math.min(amt, investedCapital).toString())}
+                      disabled={investedCapital < amt}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-rose-900/50 text-rose-200 border border-rose-500/20 text-xs font-bold disabled:opacity-30 transition-colors"
+                    >
+                      R$ {amt}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setEarlyWithdrawAmountInput(investedCapital.toString())}
+                    disabled={investedCapital <= 0}
+                    className="px-3 py-1.5 rounded-lg bg-rose-600/30 hover:bg-rose-600/50 text-rose-200 border border-rose-500/40 text-xs font-bold transition-colors"
+                  >
+                    Todo o Investimento
+                  </button>
+                </div>
+              </div>
+
+              {/* Values Breakdown */}
+              {(() => {
+                const parsed = parseFloat(earlyWithdrawAmountInput);
+                const withdrawVal = !isNaN(parsed) && parsed > 0 ? Math.min(parsed, investedCapital) : investedCapital;
+                const totalYield = Math.max(0, investedCapital - principalInvested);
+                const yieldRatio = investedCapital > 0 ? totalYield / investedCapital : 0;
+                const redeemedYield = Math.round(withdrawVal * yieldRatio * 100) / 100;
+                const redeemedPrincipal = Math.max(0, Math.round((withdrawVal - redeemedYield) * 100) / 100);
+                const taxAmount = Math.round(redeemedYield * 0.225 * 100) / 100;
+                const netAmount = Math.round((withdrawVal - taxAmount) * 100) / 100;
+                const remainingInvested = Math.max(0, Math.round((investedCapital - withdrawVal) * 100) / 100);
+
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-white/10 space-y-0.5">
+                        <span className="text-slate-400 block text-[11px]">Principal Resgatado:</span>
+                        <strong className="text-white text-sm font-bold">
+                          R$ {redeemedPrincipal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-white/10 space-y-0.5">
+                        <span className="text-slate-400 block text-[11px]">Rendimento Resgatado:</span>
+                        <strong className="text-emerald-400 text-sm font-bold">
+                          +R$ {redeemedYield.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-slate-900/80 border border-white/10 space-y-0.5">
+                        <span className="text-slate-400 block text-[11px]">Saldo Restante no CDB:</span>
+                        <strong className="text-indigo-300 text-sm font-bold">
+                          R$ {remainingInvested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+
+                      <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-500/30 space-y-0.5">
+                        <span className="text-rose-300 block text-[11px]">IR (22,5% do Rendimento):</span>
+                        <strong className="text-rose-400 text-sm font-bold">
+                          -R$ {taxAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="text-slate-300 font-semibold block text-[11px]">Valor Líquido Creditado no Saldo:</span>
+                        <span className="text-[10px] text-emerald-300">Disponível imediatamente para compras e despesas</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-lg font-black text-emerald-400">
+                          R$ {netAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/10">
+                      <button
+                        type="button"
+                        onClick={() => setShowEarlyWithdrawModal(false)}
+                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-extrabold text-xs shadow-lg glow-rose flex items-center gap-1.5 transition-all"
+                      >
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Confirmar Resgate Antecipado</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
             </form>
           </div>
         </div>
