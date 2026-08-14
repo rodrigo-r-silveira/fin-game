@@ -53,7 +53,7 @@ interface UnforeseenEvent {
   triggeredMonth: number;
 }
 
-const MONTH_DURATION_SECONDS = 300; // 5 minutos por mês
+const MONTH_DURATION_SECONDS = 240; // 4 minutos por mês (240 segundos)
 const TOTAL_MONTHS = 7;
 const MONTHLY_ALLOWANCE = 1560.0; // Bolsa Auxílio ajustada para R$ 1.560,00
 
@@ -69,6 +69,30 @@ export default function DashboardPage() {
   const [penultimateInvested, setPenultimateInvested] = useState<number>(0.0); // Investimento acumulado até o Mês 6 para o Ranking Final
   const [happinessPoints, setHappinessPoints] = useState<number>(100);
   const [groupName, setGroupName] = useState<string>("Grupo Inovadores FinTech");
+
+  // Helper to record audit log events in database
+  const logGameEvent = (action: string, details: string) => {
+    if (typeof window !== "undefined") {
+      const token = new URLSearchParams(window.location.search).get("token") || localStorage.getItem("finGame_groupToken");
+      if (token) {
+        fetch("/api/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrCodeToken: token,
+            groupName: groupName,
+            action,
+            details,
+            currentMonth: currentMonthRef.current,
+            balance: balanceRef.current,
+            savings: savingsRef.current,
+            investments: investedCapitalRef.current,
+            happinessPoints: happinessPointsRef.current,
+          }),
+        }).catch(() => {});
+      }
+    }
+  };
 
   // Investment redemption modal in final month & early withdraw modal
   const [showInvestBonusModal, setShowInvestBonusModal] = useState<boolean>(false);
@@ -243,6 +267,44 @@ export default function DashboardPage() {
                     setPenultimateInvested(matched.investments);
                     penultimateInvestedRef.current = matched.investments;
                   }
+                }
+
+                // Self-Healing Network Recovery: Ensure fixed expenses are populated in Months 1 to 6
+                if (
+                  matched.currentMonth >= 1 &&
+                  matched.currentMonth < TOTAL_MONTHS &&
+                  fixedExpensesRef.current.length === 0
+                ) {
+                  let recovered: ExpenseItem[] = [];
+                  const savedExpenses = localStorage.getItem(`finGame_fixedExpenses_${token}`);
+                  if (savedExpenses) {
+                    try {
+                      const parsed = JSON.parse(savedExpenses);
+                      if (Array.isArray(parsed) && parsed.length > 0) {
+                        recovered = parsed;
+                      }
+                    } catch (_) {}
+                  }
+
+                  if (recovered.length === 0 && chosenBaseExpensesRef.current.length > 0) {
+                    recovered = chosenBaseExpensesRef.current.map((e, idx) => ({
+                      ...e,
+                      id: `f${idx + 1}-m${matched.currentMonth}`,
+                      isPaid: false,
+                      consecutiveMonths: 1,
+                    }));
+                  }
+
+                  if (recovered.length > 0) {
+                    setFixedExpenses(recovered);
+                    localStorage.setItem(`finGame_fixedExpenses_${token}`, JSON.stringify(recovered));
+                  }
+                } else if (
+                  matched.currentMonth === TOTAL_MONTHS &&
+                  fixedExpensesRef.current.length > 0
+                ) {
+                  // Ensure Month 7 is cleanly purged of fixed expenses
+                  setFixedExpenses([]);
                 }
               }
             }
@@ -749,7 +811,7 @@ export default function DashboardPage() {
     setBalance(newBalance);
     setCurrentMonth(nextMonth);
 
-    if (nextMonth <= TOTAL_MONTHS) {
+    if (nextMonth < TOTAL_MONTHS) {
       // Re-use the exact 4 expenses chosen by the player in Month 0 RPG character creation
       const sourceBase = curChosenBase.length > 0 
         ? curChosenBase 
@@ -778,19 +840,53 @@ export default function DashboardPage() {
         newPoints,
         nextMonth,
         undefined,
-        nextMonth >= TOTAL_MONTHS ? penultimateInvestedRef.current : updatedInvested
+        updatedInvested
+      );
+
+      logGameEvent(
+        "MONTH_TRANSITION",
+        `Entrou no Mês ${nextMonth}. Sobra acumulada: R$ ${remainingBalance.toFixed(2)}. Rendimento CDB: +R$ ${yieldGained.toFixed(2)}. Penalidade: -${totalPenalty} pts. Saldo: R$ ${newBalance.toFixed(2)}, Poupança: R$ ${newSavings.toFixed(2)}, Investimentos: R$ ${updatedInvested.toFixed(2)}, Pontos: ${newPoints}.`
       );
     } else {
-      // FINAL MONTH (Mês 6 Vencimento dos Investimentos!)
+      // FINAL MONTH (Mês 7 - Vencimento dos Investimentos & Metas Finais!)
+      setFixedExpenses([]);
+      setActiveUnforeseen(null);
+      setModalCountdown(null);
+
+      const token = typeof window !== "undefined" && localStorage.getItem("finGame_groupToken");
+      if (token) {
+        localStorage.setItem(`finGame_fixedExpenses_${token}`, JSON.stringify([]));
+      }
+
       let finalBonus = 0;
-      let finalBal = newBalance;
+      let finalSavings = newSavings;
       if (updatedInvested > 0) {
         finalBonus = 150; // Massivo bônus de maturidade no Mês Final sem impostos!
-        finalBal = newBalance + updatedInvested;
-        setBalance(finalBal);
+        finalSavings = newSavings + updatedInvested;
+        setSavings(finalSavings);
+        savingsRef.current = finalSavings;
         setHappinessPoints((prev) => prev + finalBonus);
+        happinessPointsRef.current = newPoints + finalBonus;
         setInvestedCapital(0);
+        investedCapitalRef.current = 0;
+        setShowInvestBonusModal(true);
       }
+
+      const finalPts = newPoints + finalBonus;
+      syncGroupMetrics(
+        0,
+        finalSavings,
+        finalPts,
+        TOTAL_MONTHS,
+        undefined,
+        penultimateInvestedRef.current
+      );
+
+      logGameEvent(
+        "FINAL_MONTH_REACHED",
+        `🎉 Chegou ao Mês Final (Mês 7)! Resgate automático de CDB: R$ ${updatedInvested.toFixed(2)} (+${finalBonus} pts de bônus). Poupança total para compras finais: R$ ${finalSavings.toFixed(2)}. Pontuação Final: ${finalPts} pts.`
+      );
+
       setNotification({
         message: `🎉 PARABÉNS! Você chegou ao Mês Final! ${updatedInvested > 0 ? `Investimento resgatado SEM IMPOSTOS + Bônus de +${finalBonus} pts!` : "Use a sua Poupança para comprar Metas de Longo Prazo!"}`,
         type: "success",
@@ -821,6 +917,11 @@ export default function DashboardPage() {
     );
 
     syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
+
+    logGameEvent(
+      "PAY_FIXED_EXPENSE",
+      `Pagou despesa fixa "${expense.title}" por R$ ${expense.cost.toFixed(2)} (+${expense.happinessPoints} pts Felicidade).`
+    );
 
     const savingsMsg = payment.usedSavings > 0
       ? ` (R$ ${payment.usedSavings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} retirados da Poupança)`
@@ -859,6 +960,11 @@ export default function DashboardPage() {
 
     syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
 
+    logGameEvent(
+      "BUY_TEMPTATION",
+      `Comprou tentação "${item.title}" por R$ ${item.cost.toFixed(2)} (+${item.happinessPoints} pts Felicidade).`
+    );
+
     const savingsMsg = payment.usedSavings > 0
       ? ` (R$ ${payment.usedSavings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} retirados da Poupança)`
       : "";
@@ -890,6 +996,11 @@ export default function DashboardPage() {
 
     syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
 
+    logGameEvent(
+      "BUY_FLASH_PROMO",
+      `Aproveitou Promoção Flash por R$ ${promoCost.toFixed(2)} (+${promoPoints} pts Felicidade).`
+    );
+
     setNotification({
       message: `⚡ Promoção Flash adquirida! +50 Pontos de Felicidade por apenas R$ 130,00!`,
       type: "success",
@@ -917,6 +1028,11 @@ export default function DashboardPage() {
 
       syncGroupMetrics(payment.newBalance, payment.newSavings, newPoints, currentMonth);
 
+      logGameEvent(
+        "UNFORESEEN_RESOLVED",
+        `Resolveu imprevisto "${activeUnforeseen.title}" por R$ ${activeUnforeseen.costToFix.toFixed(2)} (+${activeUnforeseen.restoredPointsIfFixed} pts Felicidade).`
+      );
+
       const savingsMsg = payment.usedSavings > 0
         ? ` (R$ ${payment.usedSavings.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} retirados da Poupança)`
         : "";
@@ -930,6 +1046,11 @@ export default function DashboardPage() {
       setHappinessPoints(newPoints);
 
       syncGroupMetrics(balance, savings, newPoints, currentMonth);
+
+      logGameEvent(
+        "UNFORESEEN_IGNORED",
+        `Ignorou imprevisto "${activeUnforeseen.title}" sofrendo penalidade de -${activeUnforeseen.penaltyIfNotFixedPoints} pts Felicidade.`
+      );
 
       setNotification({
         message: `Imprevisto ignorado! Penalidade de -${activeUnforeseen.penaltyIfNotFixedPoints} Pontos de Felicidade!`,
@@ -977,6 +1098,12 @@ export default function DashboardPage() {
     }
 
     syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth, undefined, newInvested);
+
+    logGameEvent(
+      "INVEST_MONEY",
+      `Aplicou R$ ${amount.toFixed(2)} no CDB Fictício (+2%/mês). Total investido agora: R$ ${newInvested.toFixed(2)}.`
+    );
+
     setNotification({
       message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} aplicados no CDB Fictício (+2% rendimento/mês)!`,
       type: "success",
@@ -1032,6 +1159,11 @@ export default function DashboardPage() {
     setShowEarlyWithdrawModal(false);
     syncGroupMetrics(newBalance, savings, happinessPoints, currentMonth, undefined, newInvested);
 
+    logGameEvent(
+      "EARLY_WITHDRAW",
+      `Resgate antecipado: Bruto R$ ${withdrawGrossAmount.toFixed(2)}, Líquido R$ ${netAmount.toFixed(2)}, IR retido (22,5% sobre R$ ${redeemedYield.toFixed(2)}): R$ ${taxAmount.toFixed(2)}. Saldo investido restante: R$ ${newInvested.toFixed(2)}.`
+    );
+
     const taxMsg = taxAmount > 0
       ? ` (R$ ${taxAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} pagos em IR de 22,5% sobre o rendimento de R$ ${redeemedYield.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})`
       : "";
@@ -1056,6 +1188,12 @@ export default function DashboardPage() {
     setBalance(newBalance);
     setSavings(newSavings);
     syncGroupMetrics(newBalance, newSavings, happinessPoints, currentMonth);
+
+    logGameEvent(
+      "DEPOSIT_SAVINGS",
+      `Guardou R$ ${amount.toFixed(2)} na Poupança. Poupança total: R$ ${newSavings.toFixed(2)}.`
+    );
+
     setNotification({
       message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} guardados na Poupança com sucesso!`,
       type: "success",
@@ -1076,6 +1214,12 @@ export default function DashboardPage() {
     setSavings(newSavings);
     setBalance(newBalance);
     syncGroupMetrics(newBalance, newSavings, happinessPoints, currentMonth);
+
+    logGameEvent(
+      "WITHDRAW_SAVINGS",
+      `Retirou R$ ${amount.toFixed(2)} da Poupança para o Saldo Mensal. Poupança restante: R$ ${newSavings.toFixed(2)}.`
+    );
+
     setNotification({
       message: `R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados da Poupança para o Saldo Mensal!`,
       type: "success",
@@ -1113,6 +1257,11 @@ export default function DashboardPage() {
 
     syncGroupMetrics(newBalance, newSavings, newPoints, currentMonth, goal.title);
 
+    logGameEvent(
+      "BUY_FINAL_GOAL",
+      `🏆 Conquistou a Recompensa Final "${goal.title}" por R$ ${goal.cost.toFixed(2)} (+${goal.happinessPoints} pts Felicidade)!`
+    );
+
     setNotification({
       message: `🏆 RECOMPENSA CONQUISTADA: ${goal.title}! Bônus MASSIVO de +${goal.happinessPoints} Pontos de Felicidade!`,
       type: "success",
@@ -1148,6 +1297,24 @@ export default function DashboardPage() {
     if (isRPGConfirmed) {
       return (
         <div className="min-h-screen p-6 text-slate-100 flex flex-col items-center justify-center max-w-xl mx-auto space-y-6 text-center">
+          {/* Toast Notification Banner */}
+          {notification && (
+            <div
+              className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl backdrop-blur-md border animate-in fade-in slide-in-from-top-4 duration-300 ${
+                notification.type === "success"
+                  ? "bg-emerald-950/95 border-emerald-500/60 text-emerald-200 shadow-emerald-900/40"
+                  : notification.type === "warning"
+                  ? "bg-amber-950/95 border-amber-500/60 text-amber-200 shadow-amber-900/40"
+                  : "bg-rose-950/95 border-rose-500/60 text-rose-200 shadow-rose-900/40"
+              }`}
+            >
+              {notification.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
+              {notification.type === "warning" && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />}
+              {notification.type === "error" && <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />}
+              <span className="text-sm font-medium">{notification.message}</span>
+            </div>
+          )}
+
           <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-2xl glow-emerald animate-pulse">
             <CheckCircle2 className="w-8 h-8" />
           </div>
@@ -1159,7 +1326,7 @@ export default function DashboardPage() {
             </div>
             <h1 className="text-2xl font-black text-white">Personagem Criado com Sucesso!</h1>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Suas 4 opções de estilo de vida foram salvas. Aguarde todos os outros grupos confirmarem suas escolhas ou o encerramento do cronômetro de 5 minutos para o jogo avançar para o Mês 1!
+              Suas 4 opções de estilo de vida foram salvas. Aguarde todos os outros grupos confirmarem suas escolhas ou o encerramento do cronômetro de 4 minutos para o jogo avançar para o Mês 1!
             </p>
           </div>
 
@@ -1183,6 +1350,24 @@ export default function DashboardPage() {
 
     return (
       <div className="min-h-screen p-4 sm:p-6 text-slate-100 flex flex-col items-center justify-center max-w-5xl mx-auto space-y-6">
+        {/* Toast Notification Banner */}
+        {notification && (
+          <div
+            className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl backdrop-blur-md border animate-in fade-in slide-in-from-top-4 duration-300 ${
+              notification.type === "success"
+                ? "bg-emerald-950/95 border-emerald-500/60 text-emerald-200 shadow-emerald-900/40"
+                : notification.type === "warning"
+                ? "bg-amber-950/95 border-amber-500/60 text-amber-200 shadow-amber-900/40"
+                : "bg-rose-950/95 border-rose-500/60 text-rose-200 shadow-rose-900/40"
+            }`}
+          >
+            {notification.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
+            {notification.type === "warning" && <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />}
+            {notification.type === "error" && <ShieldAlert className="w-5 h-5 text-rose-400 shrink-0" />}
+            <span className="text-sm font-medium">{notification.message}</span>
+          </div>
+        )}
+
         <div className="text-center space-y-2 max-w-xl">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold uppercase tracking-wider">
             <UserCheck className="w-4 h-4 text-purple-400" />
@@ -1375,15 +1560,15 @@ export default function DashboardPage() {
   // ==========================================
   return (
     <div className="min-h-screen pb-16 text-slate-100 selection:bg-emerald-500/20">
-      {/* Toast Notification Banner */}
+      {/* Toast Notification Banner (Highest z-index so it appears on top of all modals) */}
       {notification && (
         <div
-          className={`fixed top-4 right-4 z-50 flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl backdrop-blur-md border animate-in fade-in slide-in-from-top-4 duration-300 ${
+          className={`fixed top-4 right-4 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl shadow-2xl backdrop-blur-md border animate-in fade-in slide-in-from-top-4 duration-300 ${
             notification.type === "success"
-              ? "bg-emerald-950/90 border-emerald-500/50 text-emerald-200"
+              ? "bg-emerald-950/95 border-emerald-500/60 text-emerald-200 shadow-emerald-900/40"
               : notification.type === "warning"
-              ? "bg-amber-950/90 border-amber-500/50 text-amber-200"
-              : "bg-rose-950/90 border-rose-500/50 text-rose-200"
+              ? "bg-amber-950/95 border-amber-500/60 text-amber-200 shadow-amber-900/40"
+              : "bg-rose-950/95 border-rose-500/60 text-rose-200 shadow-rose-900/40"
           }`}
         >
           {notification.type === "success" && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}

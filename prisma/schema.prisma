@@ -66,3 +66,23 @@ model Transaction {
   monthNumber Int
   createdAt   DateTime @default(now())
 }
+
+model GameLog {
+  id              String   @id @default(uuid())
+  groupId         String?
+  groupName       String?
+  qrCodeToken     String?
+  action          String   // ex: "MONTH_TRANSITION", "PAY_FIXED_EXPENSE", "BUY_TEMPTATION", "INVEST_MONEY", "EARLY_WITHDRAW", "DEPOSIT_SAVINGS", "WITHDRAW_SAVINGS", "RESOLVE_UNFORESEEN", "BUY_GOAL", "CONFIRM_RPG", "SCORE_ADJUSTMENT"
+  details         String   // Descrição detalhada do evento ou snapshot JSON
+  currentMonth    Int
+  balance         Float
+  savings         Float
+  investments     Float
+  happinessPoints Int
+  createdAt       DateTime @default(now())
+
+  @@index([groupId])
+  @@index([qrCodeToken])
+  @@index([createdAt])
+}
+

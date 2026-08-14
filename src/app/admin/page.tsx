@@ -19,6 +19,10 @@ import {
   Trash2,
   LogOut,
   Sparkles,
+  FileText,
+  History,
+  Edit3,
+  Save,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -30,7 +34,9 @@ interface GroupItem {
   qrCodeToken: string;
   balance: number;
   savings: number;
+  investments?: number;
   happinessPoints: number;
+  currentMonth: number;
   isStarted: boolean;
   createdAt: string;
 }
@@ -49,6 +55,13 @@ export default function AdminPage() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+
+  // Audit Logs State
+  const [selectedGroupForLogs, setSelectedGroupForLogs] = useState<GroupItem | null>(null);
+  const [groupLogs, setGroupLogs] = useState<any[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [editingScoreGroupId, setEditingScoreGroupId] = useState<string | null>(null);
+  const [newScoreInput, setNewScoreInput] = useState<string>("");
 
   // Check admin session authentication
   useEffect(() => {
@@ -202,8 +215,8 @@ export default function AdminPage() {
     };
   }, [authChecked]);
 
-  // Live timer tick for admin control panel based on server timestamp
-  const [timeLeft, setTimeLeft] = useState<number>(300);
+  // Live timer tick for admin control panel based on server timestamp (4 minutes = 240s)
+  const [timeLeft, setTimeLeft] = useState<number>(240);
 
   useEffect(() => {
     if (!gameStarted || groups.length === 0) return;
@@ -212,11 +225,81 @@ export default function AdminPage() {
 
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - new Date((firstWithTime as any).monthStartedAt).getTime()) / 1000);
-      setTimeLeft(Math.max(0, 300 - elapsed));
+      setTimeLeft(Math.max(0, 240 - elapsed));
     }, 1000);
 
     return () => clearInterval(interval);
   }, [gameStarted, groups]);
+
+  // Open audit logs modal for a group
+  const handleOpenGroupLogs = async (group: GroupItem) => {
+    setSelectedGroupForLogs(group);
+    setLoadingLogs(true);
+    try {
+      const res = await fetch(`/api/logs?token=${group.qrCodeToken}`);
+      const data = await res.json();
+      if (data.success && Array.isArray(data.logs)) {
+        setGroupLogs(data.logs);
+      } else {
+        setGroupLogs([]);
+      }
+    } catch (_) {
+      setGroupLogs([]);
+    } finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  // Adjust group score manually (with audit log)
+  const handleSaveScoreAdjustment = async (group: GroupItem) => {
+    const pts = parseInt(newScoreInput, 10);
+    if (isNaN(pts)) {
+      alert("Informe um número válido para a nova pontuação.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/groups", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          qrCodeToken: group.qrCodeToken,
+          happinessPoints: pts,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Record adjustment log
+        await fetch("/api/logs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            qrCodeToken: group.qrCodeToken,
+            groupName: group.name,
+            action: "ADMIN_SCORE_ADJUSTMENT",
+            details: `Facilitador ajustou pontuação manualmente de ${group.happinessPoints} para ${pts} pts.`,
+            currentMonth: group.currentMonth || 1,
+            balance: group.balance,
+            savings: group.savings,
+            investments: group.investments || 0,
+            happinessPoints: pts,
+          }),
+        }).catch(() => {});
+
+        setEditingScoreGroupId(null);
+        setNewScoreInput("");
+        fetchGroups();
+        if (selectedGroupForLogs?.qrCodeToken === group.qrCodeToken) {
+          handleOpenGroupLogs({ ...group, happinessPoints: pts });
+        }
+        setLastAction(`✏️ Pontuação do grupo "${group.name}" ajustada para ${pts} pts.`);
+      } else {
+        alert(`Erro ao ajustar pontuação: ${data.error}`);
+      }
+    } catch (_) {
+      alert("Erro de conexão ao salvar ajuste.");
+    }
+  };
 
   // Advance month for all active groups in DB
   const handleNextMonth = async () => {
@@ -603,6 +686,15 @@ export default function AdminPage() {
                       <strong className="text-amber-300 font-extrabold">{group.happinessPoints} pts</strong>
                     </div>
 
+                    <button
+                      onClick={() => handleOpenGroupLogs(group)}
+                      className="px-2.5 py-1.5 rounded-lg bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 font-semibold text-[11px] flex items-center gap-1 transition-colors"
+                      title="Ver histórico de ações e auditoria de pontuação"
+                    >
+                      <History className="w-3.5 h-3.5" />
+                      <span>Logs</span>
+                    </button>
+
                     <a
                       href={`/dashboard?token=${group.qrCodeToken}`}
                       target="_blank"
@@ -638,6 +730,150 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
+
+      {/* Group Audit Logs Modal */}
+      {selectedGroupForLogs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
+          <div className="glass-panel max-w-4xl w-full p-6 rounded-3xl border border-indigo-500/40 shadow-2xl space-y-6 relative max-h-[90vh] flex flex-col">
+            <button
+              onClick={() => {
+                setSelectedGroupForLogs(null);
+                setEditingScoreGroupId(null);
+              }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white px-3 py-1 rounded-lg bg-slate-900 text-xs font-bold"
+            >
+              ✕ Fechar
+            </button>
+
+            <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10 pr-16">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-indigo-500/20 border border-indigo-500/30 text-indigo-400">
+                  <History className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <span>Logs & Auditoria: {selectedGroupForLogs.name}</span>
+                  </h2>
+                  <p className="text-xs text-slate-400">
+                    Token: <strong className="text-emerald-300 font-mono">{selectedGroupForLogs.qrCodeToken}</strong> • Mês Atual: <strong className="text-white">Mês {selectedGroupForLogs.currentMonth || 1}</strong>
+                  </p>
+                </div>
+              </div>
+
+              {/* Score Inspection & Manual Adjustment */}
+              <div className="flex items-center gap-3 bg-slate-900/80 p-2.5 rounded-2xl border border-white/10">
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 uppercase font-bold block">Pontuação Atual</span>
+                  <span className="text-lg font-extrabold text-amber-300">{selectedGroupForLogs.happinessPoints} pts</span>
+                </div>
+
+                {editingScoreGroupId === selectedGroupForLogs.id ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      value={newScoreInput}
+                      onChange={(e) => setNewScoreInput(e.target.value)}
+                      placeholder="Nova pontuação"
+                      className="w-24 px-2 py-1 rounded-lg bg-slate-950 border border-amber-500/50 text-amber-300 text-xs font-bold"
+                    />
+                    <button
+                      onClick={() => handleSaveScoreAdjustment(selectedGroupForLogs)}
+                      className="p-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white transition-colors"
+                      title="Salvar nova pontuação"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setEditingScoreGroupId(null)}
+                      className="p-1.5 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setEditingScoreGroupId(selectedGroupForLogs.id);
+                      setNewScoreInput(selectedGroupForLogs.happinessPoints.toString());
+                    }}
+                    className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1 transition-colors"
+                    title="Ajustar pontuação do grupo manualmente"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Ajustar</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Metrics Snapshot Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-white/5">
+                <span className="text-[10px] text-slate-400 block">Saldo Mensal</span>
+                <strong className="text-xs font-extrabold text-emerald-400">R$ {selectedGroupForLogs.balance.toFixed(2)}</strong>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-white/5">
+                <span className="text-[10px] text-slate-400 block">Poupança Acumulada</span>
+                <strong className="text-xs font-extrabold text-purple-300">R$ {selectedGroupForLogs.savings.toFixed(2)}</strong>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-white/5">
+                <span className="text-[10px] text-slate-400 block">Investimentos CDB</span>
+                <strong className="text-xs font-extrabold text-teal-300">R$ {(selectedGroupForLogs.investments || 0).toFixed(2)}</strong>
+              </div>
+              <div className="p-3 rounded-xl bg-slate-900/60 border border-white/5">
+                <span className="text-[10px] text-slate-400 block">Pontos Felicidade</span>
+                <strong className="text-xs font-extrabold text-amber-300">{selectedGroupForLogs.happinessPoints} pts</strong>
+              </div>
+            </div>
+
+            {/* Logs Timeline List */}
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1 max-h-[450px]">
+              {loadingLogs && (
+                <div className="p-8 text-center text-slate-400 text-xs flex items-center justify-center gap-2">
+                  <span className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin"></span>
+                  <span>Carregando logs de auditoria...</span>
+                </div>
+              )}
+
+              {!loadingLogs && groupLogs.length === 0 && (
+                <div className="p-8 text-center text-slate-500 text-xs bg-slate-900/40 rounded-xl border border-dashed border-white/10">
+                  Nenhum evento registrado ainda para este grupo.
+                </div>
+              )}
+
+              {!loadingLogs &&
+                groupLogs.map((log: any) => {
+                  const dateStr = new Date(log.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+                  return (
+                    <div
+                      key={log.id}
+                      className="p-3 rounded-xl bg-slate-900/80 border border-white/5 hover:border-indigo-500/30 transition-all text-xs space-y-1"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-mono font-bold text-[10px]">
+                            {log.action}
+                          </span>
+                          <span className="text-[10px] font-bold text-slate-400">
+                            Mês {log.currentMonth}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">{dateStr}</span>
+                      </div>
+                      <p className="text-slate-300 text-xs">{log.details}</p>
+                      <div className="flex items-center gap-3 text-[10px] text-slate-400 pt-1 border-t border-white/5">
+                        <span>Saldo: <strong className="text-emerald-400">R$ {log.balance.toFixed(2)}</strong></span>
+                        <span>Poupança: <strong className="text-purple-300">R$ {log.savings.toFixed(2)}</strong></span>
+                        <span>Investimento: <strong className="text-teal-300">R$ {log.investments.toFixed(2)}</strong></span>
+                        <span>Pontos: <strong className="text-amber-300">{log.happinessPoints} pts</strong></span>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Fullscreen Projection Modal for QR Code */}
       {showQrModal && (

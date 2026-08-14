@@ -31,6 +31,23 @@ export async function POST() {
           isGameFinished: isFinished,
         },
       });
+
+      try {
+        await prisma.gameLog.create({
+          data: {
+            groupId: group.id,
+            groupName: group.name,
+            qrCodeToken: group.qrCodeToken,
+            action: "MONTH_ADVANCE",
+            details: `Avanço de mês para o Mês ${nextMonth}. Investimentos atualizados (+2% CDB): R$ ${updatedInvestments.toFixed(2)}.`,
+            currentMonth: nextMonth,
+            balance: group.balance,
+            savings: group.savings,
+            investments: updatedInvestments,
+            happinessPoints: group.happinessPoints,
+          },
+        });
+      } catch (_) {}
     }
 
     return NextResponse.json({
