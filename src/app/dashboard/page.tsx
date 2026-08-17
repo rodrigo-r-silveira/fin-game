@@ -53,7 +53,7 @@ interface UnforeseenEvent {
   triggeredMonth: number;
 }
 
-const MONTH_DURATION_SECONDS = 120; // 2 minutos por mês (120 segundos)
+const MONTH_DURATION_SECONDS = 240; // 4 minutos por mês (240 segundos)
 const TOTAL_MONTHS = 7;
 const MONTHLY_ALLOWANCE = 1560.0; // Bolsa Auxílio ajustada para R$ 1.560,00
 
@@ -109,8 +109,8 @@ export default function DashboardPage() {
   // Chosen base fixed expenses from Month 0 RPG character creation
   const [chosenBaseExpenses, setChosenBaseExpenses] = useState<ExpenseItem[]>([]);
 
-  // Imprevisto random trigger time (between 40s and 80s remaining) & modal countdown (30s)
-  const [unforeseenTriggerTime, setUnforeseenTriggerTime] = useState<number>(60);
+  // Imprevisto random trigger time (between 120s and 180s remaining) & modal countdown (30s)
+  const [unforeseenTriggerTime, setUnforeseenTriggerTime] = useState<number>(150);
   const [modalCountdown, setModalCountdown] = useState<number | null>(null);
 
   // Server-side monthStartedAt timestamp for immutable, synchronized timer ticking
@@ -483,7 +483,7 @@ export default function DashboardPage() {
   // Randomize unforeseen trigger time whenever month changes
   useEffect(() => {
     if (currentMonth > 0) {
-      const randomTime = Math.floor(Math.random() * (80 - 40 + 1)) + 40;
+      const randomTime = Math.floor(Math.random() * (180 - 120 + 1)) + 120;
       setUnforeseenTriggerTime(randomTime);
     }
   }, [currentMonth]);
@@ -716,7 +716,7 @@ export default function DashboardPage() {
     }
 
     setNotification({
-      message: "🎭 Personagem montado com sucesso! Aguarde os outros grupos confirmarem suas escolhas ou o término do tempo de 2 minutos do Mês 0...",
+      message: "🎭 Personagem montado com sucesso! Aguarde os outros grupos confirmarem suas escolhas ou o término do tempo de 5 minutos do Mês 0...",
       type: "success",
     });
   };
@@ -1345,7 +1345,7 @@ export default function DashboardPage() {
             </div>
             <h1 className="text-2xl font-black text-white">Personagem Criado com Sucesso!</h1>
             <p className="text-xs text-slate-300 leading-relaxed">
-              Suas 4 opções de estilo de vida foram salvas. Aguarde todos os outros grupos confirmarem suas escolhas ou o encerramento do cronômetro de 2 minutos para o jogo avançar para o Mês 1!
+              Suas 4 opções de estilo de vida foram salvas. Aguarde todos os outros grupos confirmarem suas escolhas ou o encerramento do cronômetro de 4 minutos para o jogo avançar para o Mês 1!
             </p>
           </div>
 

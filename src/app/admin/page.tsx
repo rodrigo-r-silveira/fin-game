@@ -215,8 +215,8 @@ export default function AdminPage() {
     };
   }, [authChecked]);
 
-  // Live timer tick for admin control panel based on server timestamp (2 minutes = 120s)
-  const [timeLeft, setTimeLeft] = useState<number>(120);
+  // Live timer tick for admin control panel based on server timestamp (4 minutes = 240s)
+  const [timeLeft, setTimeLeft] = useState<number>(240);
 
   useEffect(() => {
     if (!gameStarted || groups.length === 0) return;
@@ -225,7 +225,7 @@ export default function AdminPage() {
 
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - new Date((firstWithTime as any).monthStartedAt).getTime()) / 1000);
-      setTimeLeft(Math.max(0, 120 - elapsed));
+      setTimeLeft(Math.max(0, 240 - elapsed));
     }, 1000);
 
     return () => clearInterval(interval);
@@ -575,7 +575,7 @@ export default function AdminPage() {
               >
                 <div className="flex items-center justify-between">
                   <Zap className="w-5 h-5" />
-                  <span className="text-[10px] uppercase font-bold">Minuto 1</span>
+                  <span className="text-[10px] uppercase font-bold">Minuto 3</span>
                 </div>
                 <div>
                   <div className="text-xs sm:text-sm font-extrabold">Disparar Imprevisto</div>
