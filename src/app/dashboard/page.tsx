@@ -53,16 +53,21 @@ interface UnforeseenEvent {
   triggeredMonth: number;
 }
 
-const MONTH_DURATION_SECONDS = 120; // 2 minutos por mês (120 segundos)
-const TOTAL_MONTHS = 7;
-const MONTHLY_ALLOWANCE = 1560.0; // Bolsa Auxílio ajustada para R$ 1.560,00
+const DEFAULT_MONTH_DURATION_SECONDS = 120;
+const DEFAULT_TOTAL_MONTHS = 7;
+const DEFAULT_MONTHLY_ALLOWANCE = 1560.0;
 
 export default function DashboardPage() {
   const router = useRouter();
+  // Game session dynamic parameters
+  const [monthDurationSeconds, setMonthDurationSeconds] = useState<number>(DEFAULT_MONTH_DURATION_SECONDS);
+  const [totalMonths, setTotalMonths] = useState<number>(DEFAULT_TOTAL_MONTHS);
+  const [monthlyAllowance, setMonthlyAllowance] = useState<number>(DEFAULT_MONTHLY_ALLOWANCE);
+
   // Game state
   const [currentMonth, setCurrentMonth] = useState<number>(0); // 0 = Mês 0 (RPG Personagem)
-  const [timeLeft, setTimeLeft] = useState<number>(MONTH_DURATION_SECONDS);
-  const [balance, setBalance] = useState<number>(MONTHLY_ALLOWANCE);
+  const [timeLeft, setTimeLeft] = useState<number>(DEFAULT_MONTH_DURATION_SECONDS);
+  const [balance, setBalance] = useState<number>(DEFAULT_MONTHLY_ALLOWANCE);
   const [savings, setSavings] = useState<number>(0.0);
   const [investedCapital, setInvestedCapital] = useState<number>(0.0); // Investimentos Fictícios (CDB)
   const [principalInvested, setPrincipalInvested] = useState<number>(0.0); // Capital principal aportado
@@ -138,9 +143,11 @@ export default function DashboardPage() {
   const [catalogItems, setCatalogItems] = useState<any[]>([]);
   const [catalogUnforeseens, setCatalogUnforeseens] = useState<any[]>([]);
 
-  // Load Catalog Items & Unforeseen Events from /api/catalog
+  // Load Catalog Items & Unforeseen Events from /api/catalog scoped to group's facilitator
   useEffect(() => {
-    fetch("/api/catalog")
+    const token = typeof window !== "undefined" ? (new URLSearchParams(window.location.search).get("token") || localStorage.getItem("finGame_groupToken")) : null;
+    const url = token ? `/api/catalog?token=${token}` : "/api/catalog";
+    fetch(url)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -166,12 +173,23 @@ export default function DashboardPage() {
       if (token) {
         localStorage.setItem("finGame_groupToken", token);
 
-        fetch(`/api/groups`)
+        fetch(`/api/groups?token=${token}`)
           .then((res) => res.json())
           .then((data) => {
-            if (data.success && Array.isArray(data.groups)) {
-              const matched = data.groups.find((g: any) => g.qrCodeToken === token);
+            if (data.success && (data.group || data.groups)) {
+              const matched = data.group || (Array.isArray(data.groups) && data.groups.find((g: any) => g.qrCodeToken === token));
               if (matched) {
+                // Sync session config
+                let curDuration = monthDurationSeconds;
+                if (data.session) {
+                  if (data.session.monthDurationSeconds) {
+                    setMonthDurationSeconds(data.session.monthDurationSeconds);
+                    curDuration = data.session.monthDurationSeconds;
+                  }
+                  if (data.session.totalMonths) setTotalMonths(data.session.totalMonths);
+                  if (data.session.monthlyAllowance) setMonthlyAllowance(data.session.monthlyAllowance);
+                }
+
                 if (matched.isGameFinished) {
                   // Flush any higher local points to server before redirecting
                   const curPts = happinessPointsRef.current;
@@ -186,12 +204,12 @@ export default function DashboardPage() {
                         happinessPoints: curPts,
                         savings: curSav,
                         investments: curInv,
-                        currentMonth: TOTAL_MONTHS,
+                        currentMonth: totalMonths,
                       }),
                     }).catch(() => {});
                   }
                   setTimeout(() => {
-                    router.push("/final-ranking");
+                    router.push(data.session?.id ? `/final-ranking?sessionId=${data.session.id}` : "/final-ranking");
                   }, 400);
                   return;
                 }
@@ -220,7 +238,7 @@ export default function DashboardPage() {
                   const mStr = new Date(matched.monthStartedAt).toISOString();
                   setServerMonthStartedAt((prev) => (prev !== mStr ? mStr : prev));
                   const elapsedSecs = Math.floor((Date.now() - new Date(matched.monthStartedAt).getTime()) / 1000);
-                  const remaining = Math.max(0, MONTH_DURATION_SECONDS - elapsedSecs);
+                  const remaining = Math.max(0, curDuration - elapsedSecs);
                   setTimeLeft(remaining);
                 }
 
@@ -483,10 +501,12 @@ export default function DashboardPage() {
   // Randomize unforeseen trigger time whenever month changes
   useEffect(() => {
     if (currentMonth > 0) {
-      const randomTime = Math.floor(Math.random() * (80 - 40 + 1)) + 40;
+      const minTime = Math.floor(monthDurationSeconds * 0.35);
+      const maxTime = Math.floor(monthDurationSeconds * 0.65);
+      const randomTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
       setUnforeseenTriggerTime(randomTime);
     }
-  }, [currentMonth]);
+  }, [currentMonth, monthDurationSeconds]);
 
   // Real-time month timer tick (Calculated strictly from server timestamp to prevent resets on actions)
   useEffect(() => {
@@ -495,10 +515,10 @@ export default function DashboardPage() {
     const interval = setInterval(() => {
       if (serverMonthStartedAt) {
         const elapsedSecs = Math.floor((Date.now() - new Date(serverMonthStartedAt).getTime()) / 1000);
-        const remaining = Math.max(0, MONTH_DURATION_SECONDS - elapsedSecs);
+        const remaining = Math.max(0, monthDurationSeconds - elapsedSecs);
         setTimeLeft(remaining);
 
-        // Trigger Imprevisto at random time (between 120s and 180s remaining)
+        // Trigger Imprevisto at random time (around middle of month remaining)
         if (remaining === unforeseenTriggerTime && !activeUnforeseen) {
           triggerUnforeseenEvent();
         }
@@ -506,7 +526,7 @@ export default function DashboardPage() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [currentMonth, serverMonthStartedAt, unforeseenTriggerTime, activeUnforeseen]);
+  }, [currentMonth, serverMonthStartedAt, unforeseenTriggerTime, activeUnforeseen, monthDurationSeconds]);
 
   // Active Unforeseen Modal Countdown Effect (30 seconds to answer)
   useEffect(() => {
@@ -823,14 +843,14 @@ export default function DashboardPage() {
     // Auto-transfer remaining balance to savings ONLY for Month 1+ transitions
     const remainingBalance = isFromMonthZero ? 0 : Math.max(0, curBalance);
     const newSavings = isFromMonthZero ? 0.0 : curSavings + remainingBalance;
-    // No Bolsa Auxílio in the Final Month (Mês 7)!
-    const newBalance = nextMonth === TOTAL_MONTHS ? 0.0 : MONTHLY_ALLOWANCE;
+    // No Bolsa Auxílio in the Final Month!
+    const newBalance = nextMonth === totalMonths ? 0.0 : monthlyAllowance;
 
     setSavings(newSavings);
     setBalance(newBalance);
     setCurrentMonth(nextMonth);
 
-    if (nextMonth < TOTAL_MONTHS) {
+    if (nextMonth < totalMonths) {
       // Re-use the exact 4 expenses chosen by the player in Month 0 RPG character creation
       const sourceBase = curChosenBase.length > 0 
         ? curChosenBase 
@@ -1294,7 +1314,7 @@ export default function DashboardPage() {
     return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const timerPercentage = ((MONTH_DURATION_SECONDS - timeLeft) / MONTH_DURATION_SECONDS) * 100;
+  const timerPercentage = ((monthDurationSeconds - timeLeft) / monthDurationSeconds) * 100;
   
   const unpaidTotalCost = fixedExpenses
     .filter((e) => !e.isPaid)
@@ -2565,7 +2585,7 @@ export default function DashboardPage() {
       )}
 
       {/* Month Time Expired Lock Overlay */}
-      {timeLeft <= 0 && currentMonth > 0 && currentMonth < TOTAL_MONTHS && (
+      {timeLeft <= 0 && currentMonth > 0 && currentMonth < totalMonths && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-xl animate-in fade-in duration-300">
           <div className="glass-panel max-w-lg w-full p-8 rounded-3xl border-2 border-amber-500/50 glow-amber text-center space-y-5 relative">
             <div className="w-16 h-16 rounded-2xl bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center justify-center mx-auto shadow-lg animate-pulse">

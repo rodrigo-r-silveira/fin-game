@@ -8,6 +8,18 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum UserRole {
+  SUPER_ADMIN
+  FACILITATOR
+}
+
+enum SessionStatus {
+  WAITING
+  RUNNING
+  FINISHED
+  ARCHIVED
+}
+
 enum ExpenseType {
   FIXED
   TEMPTATION
@@ -15,45 +27,98 @@ enum ExpenseType {
   LONG_TERM_GOAL
 }
 
-model Group {
-  id               String        @id @default(uuid())
-  qrCodeToken      String        @unique
+model User {
+  id               String            @id @default(uuid())
+  username         String            @unique
+  email            String?           @unique
+  passwordHash     String
   name             String
-  balance          Float         @default(0.0) // Saldo no mês atual
-  savings          Float         @default(0.0) // Saldo acumulado na poupança
-  investments      Float         @default(0.0) // Saldo aplicado em investimentos fictícios
-  happinessPoints  Int           @default(0)
-  currentMonth     Int           @default(0)   // 0 = Mês 0 (RPG), 1-6 = Meses de jogo
-  monthStartedAt           DateTime?                   // Timestamp do início do mês atual para sincronização global
-  unforeseenTriggeredAt   DateTime?                   // Timestamp de disparo manual de imprevisto pelo admin
-  isStarted                Boolean       @default(false)
-  isRPGConfirmed          Boolean       @default(false)             // Indica se o grupo concluiu a montagem do personagem no Mês 0
-  isGameFinished           Boolean       @default(false)
-  achievedGoal             String?                     // Nome da meta final conquistada
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  transactions     Transaction[]
+  role             UserRole          @default(FACILITATOR)
+  isActive         Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sessions         GameSession[]
+  expenses         ExpenseOption[]
+  unforeseenEvents UnforeseenEvent[]
+}
+
+model GameSession {
+  id                    String        @id @default(uuid())
+  code                  String        @unique // Room Code / Código da Sala (ex: "TURMA-A", "FIN-2026")
+  title                 String        // Nome da Partida/Turma
+  facilitatorId         String?
+  facilitator           User?         @relation(fields: [facilitatorId], references: [id], onDelete: SetNull)
+  status                SessionStatus @default(WAITING)
+  currentMonth          Int           @default(0)   // 0 = Mês 0 (RPG), 1-6 = Meses de jogo
+  monthDurationSeconds  Int           @default(120) // Duração do mês em segundos (ex: 120 = 2 min)
+  totalMonths           Int           @default(7)   // Quantidade de meses da partida
+  monthlyAllowance      Float         @default(1560.0) // Valor da Bolsa Auxílio Mensal
+  monthStartedAt        DateTime?     // Timestamp do início do mês atual para sincronização global
+  unforeseenTriggeredAt DateTime?     // Timestamp de disparo manual de imprevisto pelo facilitador
+  isStarted             Boolean       @default(false)
+  isGameFinished        Boolean       @default(false)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  groups                Group[]
+  logs                  GameLog[]
+
+  @@index([facilitatorId])
+  @@index([code])
+  @@index([status])
+}
+
+model Group {
+  id                    String        @id @default(uuid())
+  sessionId             String?       // Partida à qual o grupo pertence
+  session               GameSession?  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  qrCodeToken           String        @unique
+  name                  String
+  balance               Float         @default(0.0) // Saldo no mês atual
+  savings               Float         @default(0.0) // Saldo acumulado na poupança
+  investments           Float         @default(0.0) // Saldo aplicado em investimentos fictícios
+  happinessPoints       Int           @default(0)
+  currentMonth          Int           @default(0)   // 0 = Mês 0 (RPG), 1-6 = Meses de jogo
+  monthStartedAt        DateTime?                   // Timestamp do início do mês atual para sincronização global
+  unforeseenTriggeredAt DateTime?                   // Timestamp de disparo manual de imprevisto pelo admin
+  isStarted             Boolean       @default(false)
+  isRPGConfirmed        Boolean       @default(false)             // Indica se o grupo concluiu a montagem do personagem no Mês 0
+  isGameFinished        Boolean       @default(false)
+  achievedGoal          String?                     // Nome da meta final conquistada
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  transactions          Transaction[]
+
+  @@index([sessionId])
 }
 
 model ExpenseOption {
-  id               String      @id @default(uuid())
-  title            String
-  cost             Float
-  happinessPoints  Int
-  type             ExpenseType
-  category         String?     // ex: "Moradia", "Lazer", "Transporte"
-  description      String?
-  isRPGChoice      Boolean     @default(false)
+  id              String      @id @default(uuid())
+  userId          String?     // Facilitador proprietário deste item de catálogo (null = template global)
+  user            User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title           String
+  cost            Float
+  happinessPoints Int
+  type            ExpenseType
+  category        String?     // ex: "Moradia", "Lazer", "Transporte"
+  description     String?
+  isRPGChoice     Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+
+  @@index([userId])
 }
 
 model UnforeseenEvent {
   id                      String   @id @default(uuid())
+  userId                  String?  // Facilitador proprietário deste alerta/imprevisto (null = template global)
+  user                    User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
   title                   String   // ex: "Celular Quebrou"
   description             String
   costToFix               Float
   penaltyIfNotFixedPoints Int      // ex: 30 pontos perdidos se recusar
   restoredPointsIfFixed   Int      // ex: recupera ou ganha pontos ao arrumar
   createdAt               DateTime @default(now())
+
+  @@index([userId])
 }
 
 model Transaction {
@@ -68,21 +133,23 @@ model Transaction {
 }
 
 model GameLog {
-  id              String   @id @default(uuid())
+  id              String       @id @default(uuid())
+  sessionId       String?      // Partida à qual este log pertence
+  session         GameSession? @relation(fields: [sessionId], references: [id], onDelete: Cascade)
   groupId         String?
   groupName       String?
   qrCodeToken     String?
-  action          String   // ex: "MONTH_TRANSITION", "PAY_FIXED_EXPENSE", "BUY_TEMPTATION", "INVEST_MONEY", "EARLY_WITHDRAW", "DEPOSIT_SAVINGS", "WITHDRAW_SAVINGS", "RESOLVE_UNFORESEEN", "BUY_GOAL", "CONFIRM_RPG", "SCORE_ADJUSTMENT"
-  details         String   // Descrição detalhada do evento ou snapshot JSON
+  action          String       // ex: "MONTH_TRANSITION", "PAY_FIXED_EXPENSE", "BUY_TEMPTATION", "INVEST_MONEY", "EARLY_WITHDRAW", "DEPOSIT_SAVINGS", "WITHDRAW_SAVINGS", "RESOLVE_UNFORESEEN", "BUY_GOAL", "CONFIRM_RPG", "SCORE_ADJUSTMENT"
+  details         String       // Descrição detalhada do evento ou snapshot JSON
   currentMonth    Int
   balance         Float
   savings         Float
   investments     Float
   happinessPoints Int
-  createdAt       DateTime @default(now())
+  createdAt       DateTime     @default(now())
 
+  @@index([sessionId])
   @@index([groupId])
   @@index([qrCodeToken])
   @@index([createdAt])
 }
-

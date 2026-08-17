@@ -1,12 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Clock, Sparkles, CheckCircle2, Shield, Users, ArrowRight } from "lucide-react";
+import { Clock, Sparkles, CheckCircle2, ArrowRight, Layers } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function WaitingRoomPage() {
   const router = useRouter();
   const [groupName, setGroupName] = useState<string>("Sua Equipe");
+  const [sessionName, setSessionName] = useState<string>("");
   const [token, setToken] = useState<string>("");
   const [isStarted, setIsStarted] = useState<boolean>(false);
 
@@ -23,19 +24,19 @@ export default function WaitingRoomPage() {
       const checkGameStatus = async () => {
         if (!queryToken) return;
         try {
-          const res = await fetch("/api/groups");
+          const res = await fetch(`/api/groups?token=${queryToken}`);
           const data = await res.json();
-          if (data.success && Array.isArray(data.groups)) {
-            const matched = data.groups.find((g: any) => g.qrCodeToken === queryToken);
-            if (matched) {
-              setGroupName(matched.name);
-              if (matched.isStarted) {
-                setIsStarted(true);
-                // Delayed redirect for celebratory feedback
-                setTimeout(() => {
-                  router.push(`/dashboard?token=${queryToken}`);
-                }, 1200);
-              }
+          if (data.success && data.group) {
+            setGroupName(data.group.name);
+            if (data.session) {
+              setSessionName(data.session.title);
+            }
+            if (data.group.isStarted) {
+              setIsStarted(true);
+              // Delayed redirect for celebratory feedback
+              setTimeout(() => {
+                router.push(`/dashboard?token=${queryToken}`);
+              }, 1200);
             }
           }
         } catch (err) {
@@ -67,6 +68,12 @@ export default function WaitingRoomPage() {
                 Sala de Espera
               </span>
               <h1 className="text-2xl font-black text-white pt-2">{groupName}</h1>
+              {sessionName && (
+                <div className="flex items-center justify-center gap-1.5 text-xs text-purple-300 font-semibold">
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Partida: {sessionName}</span>
+                </div>
+              )}
               <p className="text-xs text-slate-400">
                 Código Token: <strong className="text-amber-300 font-mono">{token || "GRUPO-01"}</strong>
               </p>

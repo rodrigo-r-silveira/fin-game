@@ -1,20 +1,50 @@
 "use client";
 
-import React, { useState } from "react";
-import { Users, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, Wallet } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Users, Sparkles, CheckCircle2, ArrowRight, ShieldCheck, Wallet, Hash, Layers } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 export default function RegisterGroupPage() {
   const router = useRouter();
   const [groupName, setGroupName] = useState("");
+  const [sessionCode, setSessionCode] = useState("");
+  const [sessionData, setSessionData] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [createdGroup, setCreatedGroup] = useState<{ id: string; name: string; qrCodeToken: string } | null>(null);
 
+  // Read session code from URL query param if present (?session=CODE)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const sCode = params.get("session") || "";
+      if (sCode) {
+        setSessionCode(sCode.toUpperCase());
+        fetchSessionDetails(sCode.toUpperCase());
+      }
+    }
+  }, []);
+
+  const fetchSessionDetails = async (code: string) => {
+    try {
+      const res = await fetch(`/api/sessions?code=${code}`);
+      const data = await res.json();
+      if (data.success && data.session) {
+        setSessionData(data.session);
+      }
+    } catch (_) {}
+  };
+
+  const handleSessionCodeBlur = () => {
+    if (sessionCode.trim()) {
+      fetchSessionDetails(sessionCode.trim().toUpperCase());
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!groupName.trim()) {
-      setErrorMsg("Por favor, digite o nome do seu grupo.");
+      setErrorMsg("Por favor, digite o nome do seu personagem / grupo.");
       return;
     }
 
@@ -25,18 +55,24 @@ export default function RegisterGroupPage() {
       const res = await fetch("/api/groups", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: groupName }),
+        body: JSON.stringify({
+          name: groupName.trim(),
+          sessionCode: sessionCode.trim() ? sessionCode.trim().toUpperCase() : undefined,
+        }),
       });
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Falha ao cadastrar o grupo.");
+        throw new Error(data.error || "Falha ao cadastrar o personagem.");
       }
 
       // Save token in localStorage
       localStorage.setItem("finGame_groupId", data.group.id);
       localStorage.setItem("finGame_groupToken", data.group.qrCodeToken);
       localStorage.setItem("finGame_groupName", data.group.name);
+      if (data.session) {
+        localStorage.setItem("finGame_sessionCode", data.session.code);
+      }
 
       // Redirect to Waiting Room
       router.push(`/waiting-room?token=${data.group.qrCodeToken}`);
@@ -53,6 +89,10 @@ export default function RegisterGroupPage() {
     }
   };
 
+  const allowanceDisplay = sessionData?.monthlyAllowance
+    ? `R$ ${Number(sessionData.monthlyAllowance).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+    : "R$ 1.560,00";
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 text-slate-100 relative">
       {/* Background glow effects */}
@@ -65,16 +105,43 @@ export default function RegisterGroupPage() {
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-700 text-white flex items-center justify-center mx-auto shadow-lg glow-emerald mb-4">
                 <Users className="w-8 h-8" />
               </div>
-              <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
-                Dinâmica de Estagiários
-              </span>
-              <h1 className="text-2xl font-black text-white tracking-tight">Personagem</h1>
+
+              {sessionData ? (
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold">
+                  <Layers className="w-3.5 h-3.5" />
+                  <span>Sala: {sessionData.title} ({sessionData.code})</span>
+                </div>
+              ) : (
+                <span className="inline-block px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+                  Dinâmica de Educação Financeira
+                </span>
+              )}
+
+              <h1 className="text-2xl font-black text-white tracking-tight">Cadastro de Personagem</h1>
               <p className="text-xs text-slate-400">
-                Parabens! Você foi aprovado no programa de estágio do SEBRAE/MS 2026! Digite o nome do seu personagem para começar a jornada.
+                Parabéns pela aprovação! Digite o nome do seu personagem para começar a jornada.
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1.5">
+                  Código da Sala:
+                </label>
+                <div className="relative">
+                  <Hash className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="ex: FIN-2026"
+                    value={sessionCode}
+                    onChange={(e) => setSessionCode(e.target.value.toUpperCase().replace(/\s+/g, ""))}
+                    onBlur={handleSessionCodeBlur}
+                    disabled={loading}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl bg-slate-900 border border-white/15 text-white text-xs font-mono focus:outline-none focus:border-purple-500 transition-colors uppercase placeholder:text-slate-600"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1.5">
                   Nome do Personagem:
@@ -101,7 +168,7 @@ export default function RegisterGroupPage() {
                   <Wallet className="w-4 h-4" />
                   <span>Benefício de Início:</span>
                 </div>
-                <p>• Bolsa Auxílio Mensal: <strong>R$ 1.560,00</strong></p>
+                <p>• Bolsa Auxílio Mensal: <strong>{allowanceDisplay}</strong></p>
                 <p>• Pontos de Felicidade Iniciais: <strong>100 pts</strong></p>
               </div>
 

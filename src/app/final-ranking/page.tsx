@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Trophy, Medal, Award, ArrowLeft, Heart, PiggyBank, Sparkles, RefreshCw, Users, TrendingUp } from "lucide-react";
+import { Trophy, Medal, Award, ArrowLeft, Heart, PiggyBank, Sparkles, RefreshCw, Users, TrendingUp, Layers } from "lucide-react";
 import Link from "next/link";
 
 interface GroupData {
@@ -15,15 +15,33 @@ interface GroupData {
 
 export default function FinalRankingPage() {
   const [groups, setGroups] = useState<GroupData[]>([]);
+  const [sessionInfo, setSessionInfo] = useState<any>(null);
   const [loading, setLoading] = useState<boolean>(true);
 
   const fetchGroups = async () => {
     try {
-      const res = await fetch("/api/groups");
+      let queryParam = "";
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const sId = params.get("sessionId");
+        const tok = params.get("token") || localStorage.getItem("finGame_groupToken");
+        if (sId) {
+          queryParam = `?sessionId=${sId}`;
+        } else if (tok) {
+          queryParam = `?token=${tok}`;
+        }
+      }
+
+      const res = await fetch(`/api/groups${queryParam}`);
       const data = await res.json();
-      if (data.success && Array.isArray(data.groups)) {
+      if (data.success) {
+        if (data.session) {
+          setSessionInfo(data.session);
+        }
+
+        const list = Array.isArray(data.groups) ? data.groups : data.group ? [data.group] : [];
         // Sort groups by happinessPoints DESC, then total accumulated funds (savings + investments) DESC
-        const sorted = [...data.groups].sort((a: any, b: any) => {
+        const sorted = [...list].sort((a: any, b: any) => {
           if (b.happinessPoints !== a.happinessPoints) {
             return b.happinessPoints - a.happinessPoints;
           }
@@ -60,7 +78,7 @@ export default function FinalRankingPage() {
   const remaining = leaderboard.slice(3);
 
   return (
-    <div className="min-h-screen p-6 text-slate-100 max-w-4xl mx-auto space-y-6">
+    <div className="min-h-screen p-6 text-slate-100 max-w-4xl mx-auto space-y-6 selection:bg-emerald-500/20">
       <div className="flex items-center justify-between">
         <Link
           href="/"
@@ -72,7 +90,7 @@ export default function FinalRankingPage() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-bold">
             <Trophy className="w-4 h-4" />
-            <span>Resultado Final da Dinâmica</span>
+            <span>Resultado Oficial da Dinâmica</span>
           </div>
           <button
             onClick={fetchGroups}
@@ -92,6 +110,13 @@ export default function FinalRankingPage() {
           🏆
         </div>
 
+        {sessionInfo && (
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold">
+            <Layers className="w-3.5 h-3.5" />
+            <span>{sessionInfo.title} ({sessionInfo.code})</span>
+          </div>
+        )}
+
         <h1 className="text-3xl font-black text-white tracking-tight">Pódio de Felicidade & Investimento</h1>
         <p className="text-xs text-slate-300 max-w-md mx-auto">
           Confira a pontuação final dos grupos após a conversão dos investimentos acumulados em conquistas de vida!
@@ -107,7 +132,7 @@ export default function FinalRankingPage() {
         {!loading && leaderboard.length === 0 && (
           <div className="py-8 text-xs text-slate-400 font-semibold space-y-2">
             <Users className="w-8 h-8 text-slate-500 mx-auto" />
-            <p>Nenhum grupo participante registrado na dinâmica.</p>
+            <p>Nenhum grupo participante registrado nesta partida.</p>
           </div>
         )}
 

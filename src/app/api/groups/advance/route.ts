@@ -1,20 +1,49 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/utils/prisma";
+import { getAuthSession } from "@/utils/auth";
 
-// POST /api/groups/advance - Advance month for all active groups
-export async function POST() {
+// POST /api/groups/advance - Advance month for groups in a specific session
+export async function POST(req: Request) {
   try {
+    let sessionId: string | null = null;
+
+    try {
+      const body = await req.json();
+      if (body && body.sessionId) sessionId = body.sessionId;
+    } catch (_) {}
+
+    // Fallback: Resolve facilitator's active session
+    if (!sessionId) {
+      const authSession = await getAuthSession();
+      if (authSession) {
+        const latest = await prisma.gameSession.findFirst({
+          where: authSession.role === "SUPER_ADMIN" ? {} : { facilitatorId: authSession.id },
+          orderBy: { createdAt: "desc" },
+        });
+        if (latest) sessionId = latest.id;
+      }
+    }
+
+    let sessionTotalMonths = 7;
+    if (sessionId) {
+      const session = await prisma.gameSession.findUnique({ where: { id: sessionId } });
+      if (session && session.totalMonths) sessionTotalMonths = session.totalMonths;
+    }
+
+    const whereClause: any = { isStarted: true, isGameFinished: false };
+    if (sessionId) whereClause.sessionId = sessionId;
+
     const groups = await prisma.group.findMany({
-      where: { isStarted: true, isGameFinished: false },
+      where: whereClause,
     });
 
     const now = new Date();
     let targetMonth = 1;
 
     for (const group of groups) {
-      const nextMonth = group.currentMonth < 7 ? group.currentMonth + 1 : 7;
+      const nextMonth = group.currentMonth < sessionTotalMonths ? group.currentMonth + 1 : sessionTotalMonths;
       targetMonth = nextMonth;
-      const isFinished = nextMonth >= 7 && group.currentMonth === 7;
+      const isFinished = nextMonth >= sessionTotalMonths && group.currentMonth === sessionTotalMonths;
 
       // Apply 2% monthly yield on investments for transitions from Month 1 onwards
       let updatedInvestments = group.investments || 0;
@@ -35,6 +64,7 @@ export async function POST() {
       try {
         await prisma.gameLog.create({
           data: {
+            sessionId: group.sessionId,
             groupId: group.id,
             groupName: group.name,
             qrCodeToken: group.qrCodeToken,
@@ -50,11 +80,22 @@ export async function POST() {
       } catch (_) {}
     }
 
+    if (sessionId) {
+      await prisma.gameSession.update({
+        where: { id: sessionId },
+        data: {
+          currentMonth: targetMonth,
+          monthStartedAt: now,
+        },
+      }).catch(() => {});
+    }
+
     return NextResponse.json({
       success: true,
       message: `Mês avançado com sucesso para o Mês ${targetMonth}.`,
       currentMonth: targetMonth,
       monthStartedAt: now,
+      sessionId,
     });
   } catch (error: any) {
     return NextResponse.json(
