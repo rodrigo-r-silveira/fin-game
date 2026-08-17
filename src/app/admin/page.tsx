@@ -46,6 +46,8 @@ interface GameSessionItem {
   monthDurationSeconds: number;
   totalMonths: number;
   monthlyAllowance: number;
+  unforeseenMinPercent?: number;
+  unforeseenMaxPercent?: number;
   monthStartedAt?: string | null;
   unforeseenTriggeredAt?: string | null;
   isStarted: boolean;
@@ -104,6 +106,8 @@ export default function AdminPage() {
   const [formMonthDuration, setFormMonthDuration] = useState<number>(120); // 2 min
   const [formTotalMonths, setFormTotalMonths] = useState<number>(7);
   const [formAllowance, setFormAllowance] = useState<number>(1560.0);
+  const [formUnforeseenMinPercent, setFormUnforeseenMinPercent] = useState<number>(35);
+  const [formUnforeseenMaxPercent, setFormUnforeseenMaxPercent] = useState<number>(65);
   const [submittingSession, setSubmittingSession] = useState(false);
 
   // Audit Logs State
@@ -350,6 +354,8 @@ export default function AdminPage() {
     setFormMonthDuration(120);
     setFormTotalMonths(7);
     setFormAllowance(1560.0);
+    setFormUnforeseenMinPercent(35);
+    setFormUnforeseenMaxPercent(65);
     setShowNewSessionModal(true);
   };
 
@@ -372,6 +378,8 @@ export default function AdminPage() {
           monthDurationSeconds: formMonthDuration,
           totalMonths: formTotalMonths,
           monthlyAllowance: formAllowance,
+          unforeseenMinPercent: formUnforeseenMinPercent,
+          unforeseenMaxPercent: formUnforeseenMaxPercent,
         }),
       });
       const data = await res.json();
@@ -396,6 +404,8 @@ export default function AdminPage() {
     setFormMonthDuration(selectedSession.monthDurationSeconds || 120);
     setFormTotalMonths(selectedSession.totalMonths || 7);
     setFormAllowance(selectedSession.monthlyAllowance || 1560.0);
+    setFormUnforeseenMinPercent(selectedSession.unforeseenMinPercent || 35);
+    setFormUnforeseenMaxPercent(selectedSession.unforeseenMaxPercent || 65);
     setShowEditSessionModal(true);
   };
 
@@ -415,6 +425,8 @@ export default function AdminPage() {
           monthDurationSeconds: formMonthDuration,
           totalMonths: formTotalMonths,
           monthlyAllowance: formAllowance,
+          unforeseenMinPercent: formUnforeseenMinPercent,
+          unforeseenMaxPercent: formUnforeseenMaxPercent,
         }),
       });
       const data = await res.json();
@@ -1012,6 +1024,69 @@ export default function AdminPage() {
                 />
               </div>
 
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  ⚡ Intervalo da Mensagem Relâmpago (Imprevisto)
+                </label>
+                <select
+                  value={`${formUnforeseenMinPercent}-${formUnforeseenMaxPercent}`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val !== "custom") {
+                      const [minStr, maxStr] = val.split("-");
+                      setFormUnforeseenMinPercent(Number(minStr));
+                      setFormUnforeseenMaxPercent(Number(maxStr));
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-amber-300 font-semibold text-xs focus:border-purple-500 focus:outline-none"
+                >
+                  <option value="35-65">Meio do Mês (35% a 65% do tempo - Padrão)</option>
+                  <option value="15-40">Início do Mês (15% a 40% do tempo)</option>
+                  <option value="60-85">Final do Mês (60% a 85% do tempo)</option>
+                  <option value="10-90">Qualquer Momento (10% a 90% do tempo)</option>
+                  <option value="custom">Personalizado (Escolher Min e Max em %)</option>
+                </select>
+
+                {(!["35-65", "15-40", "60-85", "10-90"].includes(`${formUnforeseenMinPercent}-${formUnforeseenMaxPercent}`)) && (
+                  <div className="grid grid-cols-2 gap-3 mt-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-400 block mb-1">Mínimo do Mês (%)</label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={formUnforeseenMaxPercent - 5}
+                        value={formUnforeseenMinPercent}
+                        onChange={(e) => setFormUnforeseenMinPercent(Math.max(5, Number(e.target.value)))}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/10 text-xs text-amber-300 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-400 block mb-1">Máximo do Mês (%)</label>
+                      <input
+                        type="number"
+                        min={formUnforeseenMinPercent + 5}
+                        max={95}
+                        value={formUnforeseenMaxPercent}
+                        onChange={(e) => setFormUnforeseenMaxPercent(Math.min(95, Number(e.target.value)))}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/10 text-xs text-amber-300 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                  💡 A mensagem surgirá aleatoriamente entre{" "}
+                  <strong className="text-amber-300">
+                    {Math.floor(formMonthDuration * (formUnforeseenMinPercent / 100))}s
+                  </strong>{" "}
+                  e{" "}
+                  <strong className="text-amber-300">
+                    {Math.floor(formMonthDuration * (formUnforeseenMaxPercent / 100))}s
+                  </strong>{" "}
+                  decorridos de cada mês.
+                </p>
+              </div>
+
               <div className="flex items-center justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -1103,6 +1178,69 @@ export default function AdminPage() {
                   required
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-emerald-300 font-extrabold text-xs focus:border-purple-500 focus:outline-none font-mono"
                 />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-300 block mb-1">
+                  ⚡ Intervalo da Mensagem Relâmpago (Imprevisto)
+                </label>
+                <select
+                  value={`${formUnforeseenMinPercent}-${formUnforeseenMaxPercent}`}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    if (val !== "custom") {
+                      const [minStr, maxStr] = val.split("-");
+                      setFormUnforeseenMinPercent(Number(minStr));
+                      setFormUnforeseenMaxPercent(Number(maxStr));
+                    }
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-white/15 text-amber-300 font-semibold text-xs focus:border-purple-500 focus:outline-none"
+                >
+                  <option value="35-65">Meio do Mês (35% a 65% do tempo - Padrão)</option>
+                  <option value="15-40">Início do Mês (15% a 40% do tempo)</option>
+                  <option value="60-85">Final do Mês (60% a 85% do tempo)</option>
+                  <option value="10-90">Qualquer Momento (10% a 90% do tempo)</option>
+                  <option value="custom">Personalizado (Escolher Min e Max em %)</option>
+                </select>
+
+                {(!["35-65", "15-40", "60-85", "10-90"].includes(`${formUnforeseenMinPercent}-${formUnforeseenMaxPercent}`)) && (
+                  <div className="grid grid-cols-2 gap-3 mt-2.5">
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-400 block mb-1">Mínimo do Mês (%)</label>
+                      <input
+                        type="number"
+                        min={5}
+                        max={formUnforeseenMaxPercent - 5}
+                        value={formUnforeseenMinPercent}
+                        onChange={(e) => setFormUnforeseenMinPercent(Math.max(5, Number(e.target.value)))}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/10 text-xs text-amber-300 font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-slate-400 block mb-1">Máximo do Mês (%)</label>
+                      <input
+                        type="number"
+                        min={formUnforeseenMinPercent + 5}
+                        max={95}
+                        value={formUnforeseenMaxPercent}
+                        onChange={(e) => setFormUnforeseenMaxPercent(Math.min(95, Number(e.target.value)))}
+                        className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-white/10 text-xs text-amber-300 font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <p className="text-[11px] text-slate-400 mt-1.5 leading-relaxed">
+                  💡 A mensagem surgirá aleatoriamente entre{" "}
+                  <strong className="text-amber-300">
+                    {Math.floor(formMonthDuration * (formUnforeseenMinPercent / 100))}s
+                  </strong>{" "}
+                  e{" "}
+                  <strong className="text-amber-300">
+                    {Math.floor(formMonthDuration * (formUnforeseenMaxPercent / 100))}s
+                  </strong>{" "}
+                  decorridos de cada mês.
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2">

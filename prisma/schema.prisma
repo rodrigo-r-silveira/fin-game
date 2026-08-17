@@ -53,6 +53,8 @@ model GameSession {
   monthDurationSeconds  Int           @default(120) // Duração do mês em segundos (ex: 120 = 2 min)
   totalMonths           Int           @default(7)   // Quantidade de meses da partida
   monthlyAllowance      Float         @default(1560.0) // Valor da Bolsa Auxílio Mensal
+  unforeseenMinPercent  Int           @default(35)  // Porcentagem mínima de tempo no mês para o imprevisto
+  unforeseenMaxPercent  Int           @default(65)  // Porcentagem máxima de tempo no mês para o imprevisto
   monthStartedAt        DateTime?     // Timestamp do início do mês atual para sincronização global
   unforeseenTriggeredAt DateTime?     // Timestamp de disparo manual de imprevisto pelo facilitador
   isStarted             Boolean       @default(false)

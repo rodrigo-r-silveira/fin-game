@@ -63,6 +63,8 @@ export default function DashboardPage() {
   const [monthDurationSeconds, setMonthDurationSeconds] = useState<number>(DEFAULT_MONTH_DURATION_SECONDS);
   const [totalMonths, setTotalMonths] = useState<number>(DEFAULT_TOTAL_MONTHS);
   const [monthlyAllowance, setMonthlyAllowance] = useState<number>(DEFAULT_MONTHLY_ALLOWANCE);
+  const [unforeseenMinPercent, setUnforeseenMinPercent] = useState<number>(35);
+  const [unforeseenMaxPercent, setUnforeseenMaxPercent] = useState<number>(65);
 
   // Game state
   const [currentMonth, setCurrentMonth] = useState<number>(0); // 0 = Mês 0 (RPG Personagem)
@@ -188,6 +190,8 @@ export default function DashboardPage() {
                   }
                   if (data.session.totalMonths) setTotalMonths(data.session.totalMonths);
                   if (data.session.monthlyAllowance) setMonthlyAllowance(data.session.monthlyAllowance);
+                  if (data.session.unforeseenMinPercent) setUnforeseenMinPercent(data.session.unforeseenMinPercent);
+                  if (data.session.unforeseenMaxPercent) setUnforeseenMaxPercent(data.session.unforeseenMaxPercent);
                 }
 
                 if (matched.isGameFinished) {
@@ -501,12 +505,14 @@ export default function DashboardPage() {
   // Randomize unforeseen trigger time whenever month changes
   useEffect(() => {
     if (currentMonth > 0) {
-      const minTime = Math.floor(monthDurationSeconds * 0.35);
-      const maxTime = Math.floor(monthDurationSeconds * 0.65);
+      const minPct = Math.max(0.05, Math.min(0.90, unforeseenMinPercent / 100));
+      const maxPct = Math.max(minPct + 0.05, Math.min(0.95, unforeseenMaxPercent / 100));
+      const minTime = Math.floor(monthDurationSeconds * minPct);
+      const maxTime = Math.floor(monthDurationSeconds * maxPct);
       const randomTime = Math.floor(Math.random() * (maxTime - minTime + 1)) + minTime;
       setUnforeseenTriggerTime(randomTime);
     }
-  }, [currentMonth, monthDurationSeconds]);
+  }, [currentMonth, monthDurationSeconds, unforeseenMinPercent, unforeseenMaxPercent]);
 
   // Real-time month timer tick (Calculated strictly from server timestamp to prevent resets on actions)
   useEffect(() => {

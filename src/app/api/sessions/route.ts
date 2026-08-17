@@ -146,7 +146,7 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { title, code, monthDurationSeconds, totalMonths, monthlyAllowance } = body;
+    const { title, code, monthDurationSeconds, totalMonths, monthlyAllowance, unforeseenMinPercent, unforeseenMaxPercent } = body;
 
     if (!title || !String(title).trim()) {
       return NextResponse.json(
@@ -165,6 +165,9 @@ export async function POST(req: Request) {
       roomCode = generateRoomCode(authSession.username.substring(0, 3).toUpperCase());
     }
 
+    const minPct = Number(unforeseenMinPercent) >= 5 ? Number(unforeseenMinPercent) : 35;
+    const maxPct = Number(unforeseenMaxPercent) <= 95 ? Number(unforeseenMaxPercent) : 65;
+
     const newSession = await prisma.gameSession.create({
       data: {
         code: roomCode,
@@ -173,6 +176,8 @@ export async function POST(req: Request) {
         monthDurationSeconds: Number(monthDurationSeconds) > 0 ? Number(monthDurationSeconds) : 120,
         totalMonths: Number(totalMonths) > 0 ? Number(totalMonths) : 7,
         monthlyAllowance: Number(monthlyAllowance) > 0 ? Number(monthlyAllowance) : 1560.0,
+        unforeseenMinPercent: minPct,
+        unforeseenMaxPercent: Math.max(minPct + 5, maxPct),
         status: "WAITING",
         currentMonth: 0,
         isStarted: false,
@@ -206,7 +211,7 @@ export async function PUT(req: Request) {
     }
 
     const body = await req.json();
-    const { id, title, monthDurationSeconds, totalMonths, monthlyAllowance, status } = body;
+    const { id, title, monthDurationSeconds, totalMonths, monthlyAllowance, unforeseenMinPercent, unforeseenMaxPercent, status } = body;
 
     if (!id) {
       return NextResponse.json({ success: false, error: "ID da partida é obrigatório." }, { status: 400 });
@@ -227,6 +232,8 @@ export async function PUT(req: Request) {
     if (monthDurationSeconds !== undefined) updateData.monthDurationSeconds = Math.max(30, Number(monthDurationSeconds));
     if (totalMonths !== undefined) updateData.totalMonths = Math.max(1, Number(totalMonths));
     if (monthlyAllowance !== undefined) updateData.monthlyAllowance = Math.max(0, Number(monthlyAllowance));
+    if (unforeseenMinPercent !== undefined) updateData.unforeseenMinPercent = Math.max(5, Math.min(90, Number(unforeseenMinPercent)));
+    if (unforeseenMaxPercent !== undefined) updateData.unforeseenMaxPercent = Math.max(10, Math.min(95, Number(unforeseenMaxPercent)));
     if (status) updateData.status = status;
 
     const updated = await prisma.gameSession.update({
