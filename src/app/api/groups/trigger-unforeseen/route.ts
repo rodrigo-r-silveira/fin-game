@@ -5,12 +5,18 @@ import { prisma } from "@/utils/prisma";
 export async function POST() {
   try {
     const now = new Date();
-    await prisma.group.updateMany({
+    const groups = await prisma.group.findMany({
       where: { isStarted: true },
-      data: {
-        unforeseenTriggeredAt: now,
-      },
     });
+
+    for (const group of groups) {
+      await prisma.group.update({
+        where: { id: group.id },
+        data: {
+          unforeseenTriggeredAt: now,
+        },
+      });
+    }
 
     return NextResponse.json({
       success: true,

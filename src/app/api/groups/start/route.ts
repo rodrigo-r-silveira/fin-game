@@ -4,13 +4,19 @@ import { prisma } from "@/utils/prisma";
 // POST /api/groups/start - Start game for all registered groups
 export async function POST() {
   try {
-    await prisma.group.updateMany({
-      data: {
-        isStarted: true,
-        monthStartedAt: new Date(),
-        currentMonth: 0,
-      },
-    });
+    const groups = await prisma.group.findMany();
+    const now = new Date();
+
+    for (const group of groups) {
+      await prisma.group.update({
+        where: { id: group.id },
+        data: {
+          isStarted: true,
+          monthStartedAt: now,
+          currentMonth: 0,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true, message: "Partida iniciada para todos os grupos." });
   } catch (error: any) {

@@ -155,13 +155,19 @@ export async function PATCH(req: Request) {
       });
       const allConfirmed = activeGroups.length > 0 && activeGroups.every((g) => g.isRPGConfirmed || g.currentMonth > 0);
       if (allConfirmed) {
-        await prisma.group.updateMany({
+        const groupsToAdvance = await prisma.group.findMany({
           where: { isStarted: true, currentMonth: 0 },
-          data: {
-            currentMonth: 1,
-            monthStartedAt: new Date(),
-          },
         });
+        const now = new Date();
+        for (const g of groupsToAdvance) {
+          await prisma.group.update({
+            where: { id: g.id },
+            data: {
+              currentMonth: 1,
+              monthStartedAt: now,
+            },
+          });
+        }
       }
     }
 
