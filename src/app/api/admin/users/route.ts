@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/utils/prisma";
+import { Prisma } from "@prisma/client";
 import { getAuthSession, hashPassword, cloneDefaultCatalogForUser } from "@/utils/auth";
 
 // GET /api/admin/users - List all users (Super Admin only)
@@ -65,13 +66,17 @@ export async function POST(req: Request) {
     const cleanUsername = String(username).trim().toLowerCase();
     const cleanEmail = email ? String(email).trim().toLowerCase() : null;
 
+    const userOrConditions: Prisma.UserWhereInput[] = [
+      { username: { equals: cleanUsername, mode: "insensitive" } },
+    ];
+    if (cleanEmail) {
+      userOrConditions.push({ email: { equals: cleanEmail, mode: "insensitive" } });
+    }
+
     // Check duplicate username
     const existing = await prisma.user.findFirst({
       where: {
-        OR: [
-          { username: { equals: cleanUsername, mode: "insensitive" } },
-          ...(cleanEmail ? [{ email: { equals: cleanEmail, mode: "insensitive" } }] : []),
-        ],
+        OR: userOrConditions,
       },
     });
 

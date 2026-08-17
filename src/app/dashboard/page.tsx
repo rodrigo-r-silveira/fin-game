@@ -309,7 +309,7 @@ export default function DashboardPage() {
                 // Self-Healing Network Recovery: Ensure fixed expenses are populated in Months 1 to 6
                 if (
                   matched.currentMonth >= 1 &&
-                  matched.currentMonth < TOTAL_MONTHS &&
+                  matched.currentMonth < totalMonths &&
                   fixedExpensesRef.current.length === 0
                 ) {
                   let recovered: ExpenseItem[] = [];
@@ -337,7 +337,7 @@ export default function DashboardPage() {
                     localStorage.setItem(`finGame_fixedExpenses_${token}`, JSON.stringify(recovered));
                   }
                 } else if (
-                  matched.currentMonth === TOTAL_MONTHS &&
+                  matched.currentMonth === totalMonths &&
                   fixedExpensesRef.current.length > 0
                 ) {
                   // Ensure Month 7 is cleanly purged of fixed expenses
@@ -471,7 +471,7 @@ export default function DashboardPage() {
 
   // Check for investment bonus in Final Month (Mês 7)
   useEffect(() => {
-    if (currentMonth === TOTAL_MONTHS && investedCapital > 0 && !hasClaimedInvestBonus) {
+    if (currentMonth === totalMonths && investedCapital > 0 && !hasClaimedInvestBonus) {
       setShowInvestBonusModal(true);
     }
   }, [currentMonth, investedCapital, hasClaimedInvestBonus]);
@@ -490,7 +490,7 @@ export default function DashboardPage() {
     setShowInvestBonusModal(false);
 
     // Keep penultimateInvested for ranking display
-    syncGroupMetrics(balance, newSavings, newPoints, TOTAL_MONTHS, undefined, penultimateInvestedRef.current);
+    syncGroupMetrics(balance, newSavings, newPoints, totalMonths, undefined, penultimateInvestedRef.current);
 
     setNotification({
       message: `🎉 R$ ${redeemedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados do investimento +150 pts de Felicidade bônus!`,
@@ -552,7 +552,7 @@ export default function DashboardPage() {
 
   // Trigger Imprevisto at random time between 2 to 3 minutes (Shuffled per group)
   const triggerUnforeseenEvent = () => {
-    if (currentMonth === TOTAL_MONTHS) return; // Mês Final não possui disparo de imprevistos
+    if (currentMonth === totalMonths) return; // Mês Final não possui disparo de imprevistos
     if (!catalogUnforeseens || catalogUnforeseens.length === 0) return;
 
     const sourceEvents: UnforeseenEvent[] = catalogUnforeseens.map((u) => ({
@@ -604,7 +604,7 @@ export default function DashboardPage() {
         const finalInvestments =
           typeof investmentsVal === "number"
             ? investmentsVal
-            : newMonth >= TOTAL_MONTHS
+            : newMonth >= totalMonths
             ? penultimateInvestedRef.current
             : investedCapitalRef.current;
 
@@ -715,7 +715,7 @@ export default function DashboardPage() {
     setChosenBaseExpenses(initialFixedExpenses);
     setHappinessPoints(totalRPGPoints);
     setIsRPGConfirmed(true);
-    setBalance(MONTHLY_ALLOWANCE);
+    setBalance(monthlyAllowance);
 
     const token = localStorage.getItem("finGame_groupToken");
     if (token) {
@@ -727,7 +727,7 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           qrCodeToken: token,
-          balance: MONTHLY_ALLOWANCE,
+          balance: monthlyAllowance,
           savings,
           happinessPoints: totalRPGPoints,
           isRPGConfirmed: true,
@@ -825,7 +825,7 @@ export default function DashboardPage() {
         message: `🚀 Mês 1 Iniciado! Suas escolhas do Mês 0 foram carregadas como despesas do mês.`,
         type: "success",
       });
-    } else if (nextMonth === TOTAL_MONTHS) {
+    } else if (nextMonth === totalMonths) {
       setNotification({
         message: `🎉 Bem-vindo ao Mês Final! Utilize suas economias acumuladas para conquistar suas Metas de Longo Prazo!`,
         type: "success",
@@ -916,7 +916,7 @@ export default function DashboardPage() {
         0,
         finalSavings,
         finalPts,
-        TOTAL_MONTHS,
+        totalMonths,
         undefined,
         penultimateInvestedRef.current
       );
@@ -1630,7 +1630,7 @@ export default function DashboardPage() {
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                 <span>
-                  Sala Conectada • {currentMonth === TOTAL_MONTHS ? "Mês Final!" : `Mês ${currentMonth} de ${TOTAL_MONTHS}`}
+                  Sala Conectada • {currentMonth === totalMonths ? "Mês Final!" : `Mês ${currentMonth} de ${totalMonths}`}
                 </span>
               </div>
             </div>
@@ -1659,7 +1659,7 @@ export default function DashboardPage() {
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold">
               <TrendingUp className="w-4 h-4" />
-              <span>Bolsa: R$ {MONTHLY_ALLOWANCE.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/mês</span>
+              <span>Bolsa: R$ {monthlyAllowance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/mês</span>
             </div>
           </div>
         </div>
@@ -1744,7 +1744,7 @@ export default function DashboardPage() {
               >
                 + Aplicação (+2%)
               </button>
-              {investedCapital > 0 && currentMonth < TOTAL_MONTHS && (
+              {investedCapital > 0 && currentMonth < totalMonths && (
                 <button
                   onClick={() => {
                     setEarlyWithdrawAmountInput(investedCapital > 0 ? investedCapital.toString() : "");
@@ -1782,7 +1782,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Final Month Goals Section */}
-        {currentMonth === TOTAL_MONTHS && (
+        {currentMonth === totalMonths && (
           <section className="glass-panel p-6 rounded-2xl border-2 border-purple-500/40 glow-purple bg-gradient-to-b from-purple-950/20 to-slate-900/60">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-purple-500/20">
               <div>
@@ -1861,7 +1861,7 @@ export default function DashboardPage() {
         )}
 
         {/* Main Section: 2 Columns Layout (Months 1 to 5 Only) */}
-        {currentMonth < TOTAL_MONTHS && (
+        {currentMonth < totalMonths && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Left Column: Fixed Mandatory Expenses (Despesas Fixas) */}
           <div className="lg:col-span-5 space-y-4">
