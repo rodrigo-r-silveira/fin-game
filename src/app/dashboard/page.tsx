@@ -475,31 +475,23 @@ export default function DashboardPage() {
 
   // Check for investment bonus in Final Month (Mês 7)
   useEffect(() => {
-    if (currentMonth === totalMonths && investedCapital > 0 && !hasClaimedInvestBonus) {
+    if (currentMonth === totalMonths && penultimateInvested > 0 && !hasClaimedInvestBonus) {
       setShowInvestBonusModal(true);
     }
-  }, [currentMonth, investedCapital, hasClaimedInvestBonus]);
+  }, [currentMonth, penultimateInvested, hasClaimedInvestBonus]);
 
-  // Action: Claim investment bonus with "Obrigado(a)" button in Final Month
+  // Action: Dismiss investment bonus modal in Final Month
   const handleClaimInvestmentBonus = () => {
-    const redeemedAmount = investedCapital;
-    const newSavings = savings + redeemedAmount;
-    const newPoints = happinessPoints + 150;
-
-    setSavings(newSavings);
-    setHappinessPoints(newPoints);
-    setInvestedCapital(0.0);
-    setPrincipalInvested(0.0);
     setHasClaimedInvestBonus(true);
     setShowInvestBonusModal(false);
 
-    // Keep penultimateInvested for ranking display
-    syncGroupMetrics(balance, newSavings, newPoints, totalMonths, undefined, penultimateInvestedRef.current);
-
-    setNotification({
-      message: `🎉 R$ ${redeemedAmount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados do investimento +150 pts de Felicidade bônus!`,
-      type: "success",
-    });
+    const amount = penultimateInvestedRef.current || penultimateInvested;
+    if (amount > 0) {
+      setNotification({
+        message: `🎉 R$ ${amount.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} resgatados do investimento +150 pts de Felicidade bônus!`,
+        type: "success",
+      });
+    }
   };
 
   // Randomize unforeseen trigger time whenever month changes
@@ -2627,11 +2619,11 @@ export default function DashboardPage() {
               </span>
               <h2 className="text-2xl font-black text-white pt-2">Parabéns pelo seu Investimento! 🎉</h2>
               <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                Você aplicou <strong className="text-emerald-300">R$ {investedCapital.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> em investimentos ao longo da sua jornada! Seu capital rendeu juros de 2%/mês e agora está liberado <strong className="text-emerald-300">SEM IMPOSTOS</strong> para resgate e compra das suas Metas de Longo Prazo!
+                Você aplicou <strong className="text-emerald-300">R$ {penultimateInvested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> em investimentos ao longo da sua jornada! Seu capital rendeu juros de 2%/mês e agora está liberado <strong className="text-emerald-300">SEM IMPOSTOS</strong> para resgate e compra das suas Metas de Longo Prazo!
               </p>
             </div>
             <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/30 text-xs text-emerald-200 space-y-1 text-left">
-              <p>• Valor Resgatado: <strong>R$ {investedCapital.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></p>
+              <p>• Valor Resgatado: <strong>R$ {penultimateInvested.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></p>
               <p>• Bônus de Maturidade: <strong>+150 Pontos de Felicidade!</strong></p>
             </div>
             <button
